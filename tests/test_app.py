@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import secrets
+import sqlite3
 
 import pytest
 from PIL import Image
@@ -61,10 +62,16 @@ def formula_fields(**overrides):
     return values
 
 
-def create_template(client):
+def create_template(client, **overrides):
+    data = {
+        **formula_fields(),
+        "name": "Standard Service Dough",
+        "description": "Base 700 g dough",
+    }
+    data.update(overrides)
     response = client.post(
         "/templates/new",
-        data={**formula_fields(), "name": "Standard Service Dough", "description": "Base 700 g dough"},
+        data=data,
         follow_redirects=False,
     )
     assert response.status_code == 302
@@ -192,6 +199,98 @@ def test_selecting_recipe_can_load_complete_formula_into_new_log(client):
         b"renderIngredients()", b"renderPreferments()",
     ):
         assert behavior in script.data
+
+
+def test_default_recipe_prefills_future_recipe_formulas(client, app):
+    first_id = create_template(
+        client,
+        name="House Dough",
+        description="Default starting formula",
+        ball_weight_g="650",
+        hydration_pct="71",
+        salt_pct="2.8",
+        yeast_pct="0.09",
+    )
+
+    response = client.post(
+        f"/templates/{first_id}/default",
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    assert b"House Dough is now the default for new recipes." in response.data
+    assert b"Default Recipe" in response.data
+
+    new_recipe = client.get("/templates/new")
+    assert new_recipe.status_code == 200
+    for copied_value in (
+        b'"ball_weight_g": 650.0',
+        b'"hydration_pct": 71.0',
+        b'"salt_pct": 2.8',
+        b'"yeast_pct": 0.09',
+        b'High Mountain',
+        b'Einkorn',
+        b'Levain',
+    ):
+        assert copied_value in new_recipe.data
+    assert b'value="House Dough"' not in new_recipe.data
+    assert b"Default starting formula" not in new_recipe.data
+
+    second_id = create_template(
+        client,
+        name="Alternate Dough",
+        hydration_pct="66",
+    )
+    client.post(f"/templates/{second_id}/default")
+    with app.app_context():
+        defaults = get_db().execute(
+            "SELECT id FROM recipe_templates WHERE is_default = 1"
+        ).fetchall()
+        assert [row["id"] for row in defaults] == [second_id]
+
+    client.post(f"/templates/{second_id}/archive")
+    with app.app_context():
+        assert get_db().execute(
+            "SELECT COUNT(*) FROM recipe_templates WHERE is_default = 1"
+        ).fetchone()[0] == 0
+
+
+def test_existing_database_is_migrated_for_default_recipes(tmp_path):
+    database = tmp_path / "legacy.sqlite3"
+    connection = sqlite3.connect(database)
+    connection.execute(
+        """
+        CREATE TABLE recipe_templates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            formula_json TEXT NOT NULL,
+            is_archived INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    connection.commit()
+    connection.close()
+
+    app = create_app(
+        {
+            "TESTING": True,
+            "SECRET_KEY": secrets.token_hex(32),
+            "DATABASE": str(database),
+            "UPLOAD_FOLDER": str(tmp_path / "uploads"),
+            "BASIC_AUTH_USERNAME": "",
+            "BASIC_AUTH_PASSWORD": "",
+        }
+    )
+    with app.app_context():
+        columns = {
+            row["name"]
+            for row in get_db().execute(
+                "PRAGMA table_info(recipe_templates)"
+            ).fetchall()
+        }
+        assert "is_default" in columns
 
 
 def test_home_is_a_simple_utility_dashboard(client):

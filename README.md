@@ -10,6 +10,7 @@ A private, Pi-ready dough calculator and service-day production journal. Each lo
 - Any number of independently configured preferments, each expressed as a percentage of total flour with its own multi-flour blend, water, leavening, and notes
 - Automatic deduction of every preferment from the final mix
 - Reusable recipe templates and immutable service-day formula snapshots
+- One selectable default recipe that pre-populates every formula input in future recipes
 - Mix date/time, room temperature, humidity, ingredient temperatures, desired/actual final dough temperature, staged mixing speeds/durations, summed total mix time, and mix notes
 - Post-service rating, service notes, and finished-pizza photo uploads
 - Reusable flour library with protein and ash values that autofill recipe flour pick lists

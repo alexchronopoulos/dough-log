@@ -421,7 +421,8 @@ def health():
 @bp.route("/templates")
 def templates_list():
     rows = get_db().execute(
-        "SELECT * FROM recipe_templates ORDER BY is_archived, updated_at DESC"
+        "SELECT * FROM recipe_templates "
+        "ORDER BY is_archived, is_default DESC, updated_at DESC"
     ).fetchall()
     return render_template("templates_list.html", templates=rows)
 
@@ -487,7 +488,15 @@ def flour_delete(flour_id: int):
 
 @bp.route("/templates/new", methods=("GET", "POST"))
 def template_new():
-    formula = normalize_formula(DEFAULT_FORMULA)
+    default_template = get_db().execute(
+        "SELECT formula_json FROM recipe_templates "
+        "WHERE is_default = 1 AND is_archived = 0 LIMIT 1"
+    ).fetchone()
+    formula = normalize_formula(
+        _loads(default_template["formula_json"], DEFAULT_FORMULA)
+        if default_template
+        else DEFAULT_FORMULA
+    )
     if request.method == "POST":
         name = request.form.get("name", "").strip()
         description = request.form.get("description", "").strip()
@@ -570,11 +579,35 @@ def template_archive(template_id: int):
     row = _template(template_id)
     archived = 0 if row["is_archived"] else 1
     get_db().execute(
-        "UPDATE recipe_templates SET is_archived = ?, updated_at = ? WHERE id = ?",
-        (archived, _now(), template_id),
+        "UPDATE recipe_templates "
+        "SET is_archived = ?, is_default = ?, updated_at = ? WHERE id = ?",
+        (archived, 0 if archived else row["is_default"], _now(), template_id),
     )
     get_db().commit()
     flash("Template restored." if not archived else "Template archived.", "success")
+    return redirect(url_for("main.templates_list"))
+
+
+@bp.post("/templates/<int:template_id>/default")
+def template_default(template_id: int):
+    row = _template(template_id)
+    if row["is_archived"]:
+        flash("Restore this recipe before making it the default.", "error")
+        return redirect(url_for("main.templates_list"))
+
+    db = get_db()
+    now = _now()
+    with db:
+        db.execute(
+            "UPDATE recipe_templates SET is_default = 0 "
+            "WHERE is_default = 1 AND id != ?",
+            (template_id,),
+        )
+        db.execute(
+            "UPDATE recipe_templates SET is_default = 1, updated_at = ? WHERE id = ?",
+            (now, template_id),
+        )
+    flash(f"{row['name']} is now the default for new recipes.", "success")
     return redirect(url_for("main.templates_list"))
 
 

@@ -9,13 +9,18 @@
   <div class="template-grid">
     {% for template in templates %}
       <article class="template-tile {% if template.is_archived %}archived{% endif %}">
-        <p class="eyebrow">{% if template.is_archived %}Archived{% else %}Recipe{% endif %}</p>
+        <p class="eyebrow">{% if template.is_archived %}Archived{% elif template.is_default %}Default Recipe{% else %}Recipe{% endif %}</p>
         <h2>{{ template.name }}</h2>
         <p>{{ template.description or 'No description yet.' }}</p>
         <small>Updated {{ template.updated_at|pretty_datetime }}</small>
         <div class="card-actions">
           {% if not template.is_archived %}<a class="button primary small" href="{{ url_for('main.log_new', template=template.id) }}">Start Log</a>{% endif %}
           <a class="button small" href="{{ url_for('main.template_edit', template_id=template.id) }}">Edit</a>
+          {% if not template.is_archived and not template.is_default %}
+            <form method="post" action="{{ url_for('main.template_default', template_id=template.id) }}">
+              <button class="text-button" type="submit">Make Default</button>
+            </form>
+          {% endif %}
           <form method="post" action="{{ url_for('main.template_archive', template_id=template.id) }}">
             <button class="text-button" type="submit">{% if template.is_archived %}Restore{% else %}Archive{% endif %}</button>
           </form>

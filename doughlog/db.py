@@ -30,7 +30,23 @@ def close_db(_error: BaseException | None = None) -> None:
 
 def init_db() -> None:
     schema = Path(current_app.root_path, "schema.sql").read_text(encoding="utf-8")
-    get_db().executescript(schema)
+    connection = get_db()
+    connection.executescript(schema)
+
+    template_columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(recipe_templates)").fetchall()
+    }
+    if "is_default" not in template_columns:
+        connection.execute(
+            "ALTER TABLE recipe_templates "
+            "ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0"
+        )
+    connection.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS recipe_templates_one_default_idx "
+        "ON recipe_templates(is_default) WHERE is_default = 1"
+    )
+    connection.commit()
 
 
 @click.command("init-db")
@@ -42,4 +58,3 @@ def init_db_command() -> None:
 def init_app(app) -> None:
     app.teardown_appcontext(close_db)
     app.cli.add_command(init_db_command)
-
