@@ -3,8 +3,10 @@ from __future__ import annotations
 import io
 import json
 
+import pytest
 from PIL import Image
 
+from doughlog import create_app
 from doughlog.db import get_db
 
 
@@ -97,6 +99,48 @@ def create_log(client, template_id):
     )
     assert response.status_code == 302
     return int(response.headers["Location"].rstrip("/").split("/")[-1])
+
+
+def test_basic_auth_protects_app_but_not_health_check(tmp_path):
+    app = create_app(
+        {
+            "TESTING": True,
+            "SECRET_KEY": "test-secret",
+            "DATABASE": str(tmp_path / "auth.sqlite3"),
+            "UPLOAD_FOLDER": str(tmp_path / "uploads"),
+            "BASIC_AUTH_USERNAME": "alex",
+            "BASIC_AUTH_PASSWORD": "correct-horse-battery-staple",
+        }
+    )
+    client = app.test_client()
+
+    unauthorized = client.get("/")
+    assert unauthorized.status_code == 401
+    assert unauthorized.headers["WWW-Authenticate"] == (
+        'Basic realm="Pizzeria Mari Dough Log", charset="UTF-8"'
+    )
+    assert unauthorized.headers["Cache-Control"] == "no-store"
+    assert client.get("/", auth=("alex", "wrong-password")).status_code == 401
+    assert client.get("/", auth=("wrong-user", "correct-horse-battery-staple")).status_code == 401
+
+    authorized = client.get("/", auth=("alex", "correct-horse-battery-staple"))
+    assert authorized.status_code == 200
+    assert b"Service Days" in authorized.data
+    assert client.get("/static/style.css").status_code == 401
+    assert client.get("/health").get_json() == {"status": "ok"}
+
+
+def test_basic_auth_rejects_incomplete_configuration(tmp_path):
+    with pytest.raises(RuntimeError, match="must either both be set or both be empty"):
+        create_app(
+            {
+                "TESTING": True,
+                "DATABASE": str(tmp_path / "incomplete.sqlite3"),
+                "UPLOAD_FOLDER": str(tmp_path / "uploads"),
+                "BASIC_AUTH_USERNAME": "alex",
+                "BASIC_AUTH_PASSWORD": "",
+            }
+        )
 
 
 def test_new_calculator_has_requested_defaults_and_removed_controls(client):

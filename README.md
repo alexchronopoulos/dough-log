@@ -16,6 +16,7 @@ A private, Pi-ready dough calculator and service-day production journal. Each lo
 - At-a-glance history metrics for hydration, flour blend, IDY, protein, and ash
 - Multiple finished-pizza photos, including iPhone HEIC/HEIF support
 - History search/filtering, print layout, JSON record export, and a health-check endpoint
+- Optional app-level HTTP Basic Authentication for every page, record, photo, and static asset
 - Pizzeria Mari's Compagnon and Semplicita typography, cream horizontal logo, and shared blue/cream/orange/green visual system
 - Responsive layouts for desktop, iPhone, iPad, and Android
 
@@ -41,9 +42,17 @@ These instructions assume the project lives at `/home/YOUR_USER/dough-log`.
    uv sync --frozen
    cp .env.example .env
    python3 -c 'import secrets; print(secrets.token_hex(32))'
+   python3 -c 'import secrets; print(secrets.token_urlsafe(24))'
    ```
 
-2. Put the generated value after `SECRET_KEY=` in `.env`.
+2. Put the first generated value after `SECRET_KEY=` in `.env`. To enable authentication, set a username and put the second generated value after the password field:
+
+   ```dotenv
+   BASIC_AUTH_USERNAME=alex
+   BASIC_AUTH_PASSWORD=replace-with-the-generated-password
+   ```
+
+   Both authentication values must be set together. Leaving both blank disables authentication for local development.
 
 3. Edit `deploy/dough-log.service`, replacing `YOUR_USER` in the `User`, `Group`, `WorkingDirectory`, and `EnvironmentFile` lines.
 
@@ -62,13 +71,40 @@ These instructions assume the project lives at `/home/YOUR_USER/dough-log`.
    curl http://127.0.0.1:5050/health
    ```
 
+The health endpoint intentionally remains available without authentication so the service and updater can verify that the app is running. All other routes, including uploaded photos and static assets, require authentication when enabled.
+
 The service uses two Gunicorn processes with SQLite WAL mode and a busy timeout, which is appropriate for the small number of devices expected to use this private app.
+
+## Enable authentication on an existing Pi installation
+
+Generate a password, then edit the existing `.env` file:
+
+```bash
+cd /home/YOUR_USER/dough-log
+python3 -c 'import secrets; print(secrets.token_urlsafe(24))'
+nano .env
+```
+
+Add both values, using the generated password:
+
+```dotenv
+BASIC_AUTH_USERNAME=alex
+BASIC_AUTH_PASSWORD=replace-with-the-generated-password
+```
+
+Restart the application so systemd reloads the environment file:
+
+```bash
+sudo systemctl restart dough-log
+```
+
+The next visit will display the browser's standard username/password prompt. To disable authentication again, leave both values blank and restart the service.
 
 ## Optional Nginx access
 
 `deploy/nginx-dough-log.conf` contains a reverse-proxy example for `doughlog.pizzeriamari.com`. Replace the hostname if needed, copy it to `/etc/nginx/sites-available/dough-log`, enable it, and obtain the certificate with Certbot as you did for the Service Dashboard.
 
-Because this app contains internal production records and photos, add authentication before exposing it to the public Internet. Keeping it LAN-only initially requires no Nginx or certificate.
+The application already supplies the Basic Authentication challenge, so Nginx does not need its own password configuration. Use HTTPS before exposing it publicly because Basic Authentication relies on TLS to protect the credentials in transit.
 
 ## Backups
 
