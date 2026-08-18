@@ -129,6 +129,22 @@ def _flour_values() -> tuple[str, float, float]:
     return name, protein_pct, ash_pct
 
 
+def _recipe_choices() -> list[dict[str, Any]]:
+    return [
+        {
+            "id": row["id"],
+            "name": row["name"],
+            "formula": normalize_formula(_loads(row["formula_json"], DEFAULT_FORMULA)),
+        }
+        for row in get_db()
+        .execute(
+            "SELECT id, name, formula_json FROM recipe_templates "
+            "WHERE is_archived = 0 ORDER BY name"
+        )
+        .fetchall()
+    ]
+
+
 def _template(template_id: int):
     row = get_db().execute("SELECT * FROM recipe_templates WHERE id = ?", (template_id,)).fetchone()
     if row is None:
@@ -390,6 +406,7 @@ def template_archive(template_id: int):
 @bp.route("/logs/new", methods=("GET", "POST"))
 def log_new():
     db = get_db()
+    templates = _recipe_choices()
     template_id = request.args.get("template", type=int)
     selected_template = _template(template_id) if template_id else None
     formula = normalize_formula(
@@ -430,9 +447,7 @@ def log_new():
                 form_kind="log",
                 formula=formula,
                 record=record,
-                templates=db.execute(
-                    "SELECT id, name FROM recipe_templates WHERE is_archived = 0 ORDER BY name"
-                ).fetchall(),
+                templates=templates,
                 flour_library=_flour_library(),
             )
 
@@ -478,9 +493,7 @@ def log_new():
         form_kind="log",
         formula=formula,
         record=record,
-        templates=db.execute(
-            "SELECT id, name FROM recipe_templates WHERE is_archived = 0 ORDER BY name"
-        ).fetchall(),
+        templates=templates,
         flour_library=_flour_library(),
     )
 
@@ -493,6 +506,7 @@ def log_detail(log_id: int):
 @bp.route("/logs/<int:log_id>/edit", methods=("GET", "POST"))
 def log_edit(log_id: int):
     db = get_db()
+    templates = _recipe_choices()
     row = _log(log_id)
     record = _log_view(row)
     formula = normalize_formula(record["formula"])
@@ -550,9 +564,7 @@ def log_edit(log_id: int):
         form_kind="log",
         formula=formula,
         record=record,
-        templates=db.execute(
-            "SELECT id, name FROM recipe_templates WHERE is_archived = 0 ORDER BY name"
-        ).fetchall(),
+        templates=templates,
         flour_library=_flour_library(),
     )
 

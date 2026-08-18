@@ -163,6 +163,35 @@ def test_new_calculator_has_requested_defaults_and_removed_controls(client):
         assert removed not in response.data
 
 
+def test_selecting_recipe_can_load_complete_formula_into_new_log(client):
+    template_id = create_template(client)
+    response = client.get("/logs/new")
+    assert response.status_code == 200
+    assert b'data-load-recipe' in response.data
+    assert b'recipeTemplates:' in response.data
+    assert b'Standard Service Dough' in response.data
+    for formula_value in (
+        b'"ball_count": 20', b'"ball_weight_g": 700.0', b'"hydration_pct": 68.0',
+        b'"salt_pct": 3.0', b'"yeast_type": "IDY"', b'"yeast_pct": 0.07',
+        b'"residue_pct": 1.0', b'"flours"', b'"ingredients"', b'"preferments"',
+        b'High Mountain', b'Einkorn', b'Levain',
+    ):
+        assert formula_value in response.data
+
+    selected = client.get(f"/logs/new?template={template_id}")
+    assert selected.status_code == 200
+    assert b'value="Standard Service Dough"' in selected.data
+    assert f'value="{template_id}" selected'.encode() in selected.data
+
+    script = client.get("/static/app.js")
+    for behavior in (
+        b"function loadRecipe(recipe)", b"select[data-load-recipe]",
+        b"form.elements.title.value = recipe.name", b"renderFlours()",
+        b"renderIngredients()", b"renderPreferments()",
+    ):
+        assert behavior in script.data
+
+
 def test_home_is_a_simple_utility_dashboard(client):
     response = client.get("/")
     assert response.status_code == 200

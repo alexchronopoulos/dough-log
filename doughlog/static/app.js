@@ -10,6 +10,7 @@
   let preferments = structuredClone(config.formula.preferments || []);
   let mixStages = structuredClone(config.mixStages || []);
   const flourLibrary = structuredClone(config.flourLibrary || []);
+  const recipeTemplates = structuredClone(config.recipeTemplates || []);
 
   const number = (value, fallback = 0) => {
     const parsed = Number.parseFloat(value);
@@ -104,6 +105,27 @@
         <button class="remove-row" type="button" data-remove-stage="${index}" aria-label="Remove mixing stage">×</button>
       </div>`).join("");
     updateMixTime();
+  }
+
+  function loadRecipe(recipe) {
+    const formula = structuredClone(recipe.formula || {});
+    const scalarFields = [
+      "ball_count", "ball_weight_g", "hydration_pct", "salt_pct",
+      "yeast_type", "yeast_pct", "residue_pct"
+    ];
+    scalarFields.forEach((field) => {
+      if (form.elements[field] && formula[field] !== undefined) {
+        form.elements[field].value = formula[field];
+      }
+    });
+    if (form.elements.title) form.elements.title.value = recipe.name;
+    flours = structuredClone(formula.flours || []);
+    ingredients = structuredClone(formula.ingredients || []);
+    preferments = structuredClone(formula.preferments || []);
+    renderFlours();
+    renderIngredients();
+    renderPreferments();
+    updatePreview();
   }
 
   function readFlourRows(selector) {
@@ -291,6 +313,13 @@
   });
   form.addEventListener("input", updatePreview);
   form.addEventListener("change", (event) => {
+    if (event.target.matches('select[data-load-recipe]')) {
+      const selectedRecipe = recipeTemplates.find(
+        (recipe) => String(recipe.id) === event.target.value
+      );
+      if (selectedRecipe) loadRecipe(selectedRecipe);
+      return;
+    }
     const flourRowElement = event.target.closest(".flour-row");
     if (flourRowElement && event.target.matches('select[data-field="name"]')) {
       const selectedFlour = flourLibrary.find((flour) => flour.name === event.target.value);

@@ -25,7 +25,7 @@
           <label class="span-2">Log title<input name="title" value="{{ record.title }}" required></label>
           <label>Service date<input type="date" name="service_date" value="{{ record.service_date }}" required></label>
           <label>Mixed on<input type="datetime-local" name="mix_datetime" value="{{ record.mix_datetime[:16] }}" required></label>
-          <label class="span-2">Based on recipe<select name="template_id"><option value="">No linked template</option>{% for template in templates %}<option value="{{ template.id }}" {% if record.template_id == template.id %}selected{% endif %}>{{ template.name }}</option>{% endfor %}</select><small>This is a reference only. The day’s formula remains independent.</small></label>
+          <label class="span-2">Based on recipe<select name="template_id" {% if not record.id %}data-load-recipe{% endif %}><option value="">No linked template</option>{% for template in templates %}<option value="{{ template.id }}" {% if record.template_id == template.id %}selected{% endif %}>{{ template.name }}</option>{% endfor %}</select><small>Selecting a recipe loads its complete formula. The service-day log remains an independent snapshot.</small></label>
         </div>
       </section>
     {% endif %}
@@ -95,6 +95,7 @@
 window.DOUGH_LOG = {
   formula: {{ formula|tojson }},
   flourLibrary: {{ flour_library|tojson }},
+  recipeTemplates: {{ (templates if form_kind == 'log' else [])|tojson }},
   formKind: {{ form_kind|tojson }},
   mixStages: {{ (record.mix_stages or [])|tojson }}
 };
