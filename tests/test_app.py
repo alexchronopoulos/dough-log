@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import secrets
 
 import pytest
 from PIL import Image
@@ -102,14 +103,18 @@ def create_log(client, template_id):
 
 
 def test_basic_auth_protects_app_but_not_health_check(tmp_path):
+    auth_username = f"test-user-{secrets.token_hex(4)}"
+    auth_password = secrets.token_urlsafe(32)
+    invalid_username = f"invalid-user-{secrets.token_hex(4)}"
+    invalid_password = secrets.token_urlsafe(32)
     app = create_app(
         {
             "TESTING": True,
-            "SECRET_KEY": "test-secret",
+            "SECRET_KEY": secrets.token_hex(32),
             "DATABASE": str(tmp_path / "auth.sqlite3"),
             "UPLOAD_FOLDER": str(tmp_path / "uploads"),
-            "BASIC_AUTH_USERNAME": "alex",
-            "BASIC_AUTH_PASSWORD": "correct-horse-battery-staple",
+            "BASIC_AUTH_USERNAME": auth_username,
+            "BASIC_AUTH_PASSWORD": auth_password,
         }
     )
     client = app.test_client()
@@ -120,10 +125,10 @@ def test_basic_auth_protects_app_but_not_health_check(tmp_path):
         'Basic realm="Pizzeria Mari Dough Log", charset="UTF-8"'
     )
     assert unauthorized.headers["Cache-Control"] == "no-store"
-    assert client.get("/", auth=("alex", "wrong-password")).status_code == 401
-    assert client.get("/", auth=("wrong-user", "correct-horse-battery-staple")).status_code == 401
+    assert client.get("/", auth=(auth_username, invalid_password)).status_code == 401
+    assert client.get("/", auth=(invalid_username, auth_password)).status_code == 401
 
-    authorized = client.get("/", auth=("alex", "correct-horse-battery-staple"))
+    authorized = client.get("/", auth=(auth_username, auth_password))
     assert authorized.status_code == 200
     assert b"Service Days" in authorized.data
     assert client.get("/static/style.css").status_code == 401
@@ -137,7 +142,7 @@ def test_basic_auth_rejects_incomplete_configuration(tmp_path):
                 "TESTING": True,
                 "DATABASE": str(tmp_path / "incomplete.sqlite3"),
                 "UPLOAD_FOLDER": str(tmp_path / "uploads"),
-                "BASIC_AUTH_USERNAME": "alex",
+                "BASIC_AUTH_USERNAME": f"test-user-{secrets.token_hex(4)}",
                 "BASIC_AUTH_PASSWORD": "",
             }
         )

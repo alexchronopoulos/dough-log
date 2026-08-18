@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import secrets
+
 import pytest
 
 from doughlog import create_app
@@ -10,7 +12,7 @@ def app(tmp_path):
     app = create_app(
         {
             "TESTING": True,
-            "SECRET_KEY": "test-secret",
+            "SECRET_KEY": secrets.token_hex(32),
             "DATABASE": str(tmp_path / "test.sqlite3"),
             "UPLOAD_FOLDER": str(tmp_path / "uploads"),
             "BASIC_AUTH_USERNAME": "",
