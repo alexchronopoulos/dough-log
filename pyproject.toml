@@ -1,0 +1,22 @@
+[project]
+name = "pizzeria-mari-dough-log"
+version = "0.4.1"
+description = "A private dough calculator and service-day production journal for Pizzeria Mari"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "flask>=3.1,<4",
+  "gunicorn>=23,<24",
+  "pillow>=11,<13",
+  "pillow-heif>=0.22,<2",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8,<10",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+pythonpath = ["."]

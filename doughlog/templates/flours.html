@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Flour Library{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <h1>Flour Library</h1>
+</section>
+
+<div class="flour-library-layout">
+  <section class="wide-card flour-create-card">
+    <div class="section-heading"><h2>Add to Library</h2></div>
+    <form method="post" class="flour-create-form">
+      <label>Flour name<input name="name" required placeholder="High Mountain"></label>
+      <label>Protein <span>%</span><input name="protein_pct" type="number" min="0" max="100" step="0.01" required placeholder="13.50"></label>
+      <label>Ash <span>%</span><input name="ash_pct" type="number" min="0" max="100" step="0.01" required placeholder="0.65"></label>
+      <button class="button primary" type="submit">Add Flour</button>
+    </form>
+  </section>
+
+  <section class="wide-card flour-list-card">
+    <div class="section-heading"><h2>Your Flours</h2><span>{{ flours|length }} flour{% if flours|length != 1 %}s{% endif %}</span></div>
+    {% if flours %}
+      <div class="flour-library-list">
+        {% for flour in flours %}
+          <article class="flour-library-row">
+            <form method="post" action="{{ url_for('main.flour_edit', flour_id=flour.id) }}" class="flour-edit-form">
+              <label>Flour<input name="name" value="{{ flour.name }}" required></label>
+              <label>Protein %<input name="protein_pct" type="number" min="0" max="100" step="0.01" value="{{ '%g'|format(flour.protein_pct) }}" required></label>
+              <label>Ash %<input name="ash_pct" type="number" min="0" max="100" step="0.01" value="{{ '%g'|format(flour.ash_pct) }}" required></label>
+              <button class="button small" type="submit">Save</button>
+            </form>
+            <form method="post" action="{{ url_for('main.flour_delete', flour_id=flour.id) }}" onsubmit="return confirm('Remove this flour from the library? Saved formulas will not change.')">
+              <button class="text-button danger-text" type="submit">Remove</button>
+            </form>
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state compact"><p>No saved flours yet. Add the first one here, then it will appear in every formula’s flour pick list.</p></div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

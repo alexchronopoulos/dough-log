@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<section class="service-days">
+  <div class="section-heading"><h1>Service Days</h1></div>
+  <div class="card-list">
+    {% for log in recent_logs %}
+      <a class="record-card" href="{{ url_for('main.log_detail', log_id=log.id) }}">
+        <time datetime="{{ log.service_date }}"><span>{{ log.service_date[5:7] }}/{{ log.service_date[8:10] }}</span>{{ log.service_date|pretty_date }}</time>
+        <div class="record-main">
+          <strong>{{ log.title }}</strong>
+          <small>Mixed {{ log.mix_datetime|pretty_datetime }}</small>
+        </div>
+        <div class="rating" aria-label="{% if log.overall_rating %}{{ log.overall_rating }} out of 5{% else %}Not reviewed{% endif %}">
+          {% if log.overall_rating %}{{ '★' * log.overall_rating }}{{ '☆' * (5-log.overall_rating) }}{% else %}<span>Review</span>{% endif %}
+        </div>
+      </a>
+    {% else %}
+      <div class="empty-state"><h3>No dough logs yet</h3><p>Your first service-day formula will appear here.</p></div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

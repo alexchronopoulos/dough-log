@@ -1,0 +1,45 @@
+<section class="form-section">
+  <div class="section-number">01</div>
+  <div class="section-copy"><h2>Batch Size</h2></div>
+  <div class="field-grid">
+    <label>Dough balls<input name="ball_count" type="number" min="1" step="1" value="{{ formula.ball_count }}" required></label>
+    <label>Ball weight <span>g</span><input name="ball_weight_g" type="number" min="1" step="1" value="{{ '%g'|format(formula.ball_weight_g) }}" required></label>
+  </div>
+</section>
+
+<section class="form-section">
+  <div class="section-number">02</div>
+  <div class="section-copy"><h2>Complete Formula</h2></div>
+  <div class="field-grid">
+    <label>Hydration <span>%</span><input name="hydration_pct" type="number" min="0" step="0.01" value="{{ formula.hydration_pct }}" required></label>
+    <label>Salt <span>%</span><input name="salt_pct" type="number" min="0" step="0.01" value="{{ formula.salt_pct }}" required></label>
+    <label>Yeast type<select name="yeast_type">
+      {% for yeast in ['None', 'IDY', 'ADY', 'Cake Yeast'] %}<option {% if formula.yeast_type == yeast %}selected{% endif %}>{{ yeast }}</option>{% endfor %}
+    </select></label>
+    <label>Total yeast <span>%</span><input name="yeast_pct" type="number" min="0" step="0.001" value="{{ formula.yeast_pct }}"></label>
+    <label>Bowl residue compensation <span>%</span><input name="residue_pct" type="number" min="0" step="0.1" value="{{ formula.residue_pct }}"></label>
+  </div>
+
+  <div class="repeat-block">
+    <div class="repeat-heading"><h3>Final Mix Flour Blend</h3><div class="repeat-heading-actions"><a class="text-link" href="{{ url_for('main.flours') }}">Manage Flours</a><button class="button small" id="add-flour" type="button">Add Flour</button></div></div>
+    <div id="flour-list" class="repeat-list"></div>
+  </div>
+
+  <div class="repeat-block">
+    <div class="repeat-heading"><h3>Additional Ingredients</h3><button class="button small" id="add-ingredient" type="button">Add Ingredient</button></div>
+    <div id="ingredient-list" class="repeat-list"></div>
+  </div>
+</section>
+
+<section class="form-section">
+  <div class="section-number">03</div>
+  <div class="section-copy"><h2>Preferments</h2></div>
+  <div class="repeat-block flush">
+    <div class="repeat-heading"><p><strong id="preferment-total-summary">0%</strong> preferment weight vs. total flour</p><button class="button small" id="add-preferment" type="button">Add Preferment</button></div>
+    <div id="preferment-list" class="preferment-list"></div>
+  </div>
+</section>
+
+<input type="hidden" name="flours_json" id="flours-json">
+<input type="hidden" name="ingredients_json" id="ingredients-json">
+<input type="hidden" name="preferments_json" id="preferments-json">

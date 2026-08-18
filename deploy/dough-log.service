@@ -1,0 +1,20 @@
+[Unit]
+Description=Pizzeria Mari Dough Log
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=YOUR_USER
+Group=YOUR_USER
+WorkingDirectory=/home/YOUR_USER/dough-log
+EnvironmentFile=/home/YOUR_USER/dough-log/.env
+ExecStart=/home/YOUR_USER/dough-log/.venv/bin/gunicorn --workers 2 --threads 2 --timeout 60 --bind 127.0.0.1:5050 run:app
+Restart=on-failure
+RestartSec=5
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
+

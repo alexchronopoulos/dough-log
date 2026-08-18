@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}{{ page_title }}{% endblock %}
+{% block content %}
+<section class="page-heading compact-heading">
+  <h1>{{ page_title }}</h1>
+  {% if form_kind == 'template' and record.id %}<a class="button" href="{{ url_for('main.log_new', template=record.id) }}">Start Log From This Recipe</a>{% endif %}
+</section>
+
+<form method="post" id="recipe-form" class="editor-layout">
+  <div class="editor-main">
+    {% if form_kind == 'template' %}
+      <section class="form-section identity-section">
+        <div class="section-number">00</div>
+        <div class="section-copy"><h2>Recipe Identity</h2></div>
+        <div class="field-grid">
+          <label class="span-2">Recipe name<input name="name" value="{{ record.name }}" required placeholder="Standard Service Dough"></label>
+          <label class="span-2">Description<textarea name="description" rows="2" placeholder="Optional notes about when this template is used">{{ record.description }}</textarea></label>
+        </div>
+      </section>
+    {% else %}
+      <section class="form-section identity-section">
+        <div class="section-number">00</div>
+        <div class="section-copy"><h2>Service Day</h2></div>
+        <div class="field-grid">
+          <label class="span-2">Log title<input name="title" value="{{ record.title }}" required></label>
+          <label>Service date<input type="date" name="service_date" value="{{ record.service_date }}" required></label>
+          <label>Mixed on<input type="datetime-local" name="mix_datetime" value="{{ record.mix_datetime[:16] }}" required></label>
+          <label class="span-2">Based on recipe<select name="template_id"><option value="">No linked template</option>{% for template in templates %}<option value="{{ template.id }}" {% if record.template_id == template.id %}selected{% endif %}>{{ template.name }}</option>{% endfor %}</select><small>This is a reference only. The day’s formula remains independent.</small></label>
+        </div>
+      </section>
+    {% endif %}
+
+    {% include "_recipe_editor.html" %}
+
+    {% if form_kind == 'log' %}
+      <section class="form-section">
+        <div class="section-number">04</div>
+        <div class="section-copy"><h2>Mix Log</h2></div>
+        <div class="field-grid thirds">
+          <label>Room temperature <span>°F</span><input name="room_temp_f" type="number" step="0.1" value="{{ record.room_temp_f or '' }}"></label>
+          <label>Humidity <span>%</span><input name="humidity_pct" type="number" min="0" max="100" step="0.1" value="{{ record.humidity_pct or '' }}"></label>
+          <label>Flour temperature <span>°F</span><input name="flour_temp_f" type="number" step="0.1" value="{{ record.flour_temp_f or '' }}"></label>
+          <label>Water temperature <span>°F</span><input name="water_temp_f" type="number" step="0.1" value="{{ record.water_temp_f or '' }}"></label>
+          <label>Desired final temperature <span>°F</span><input name="desired_final_dough_temp_f" type="number" step="0.1" value="{{ record.desired_final_dough_temp_f or '' }}"></label>
+          <label>Actual final temperature <span>°F</span><input name="final_dough_temp_f" type="number" step="0.1" value="{{ record.final_dough_temp_f or '' }}"></label>
+        </div>
+        <div class="repeat-block">
+          <div class="repeat-heading"><h3>Mixing Stages</h3><div class="repeat-heading-actions"><strong id="total-mix-time">0 min total</strong><button class="button small" id="add-stage" type="button">Add Stage</button></div></div>
+          <div id="mix-stage-list" class="repeat-list"></div>
+        </div>
+        <label class="block-label">Mix notes<textarea name="mix_notes" rows="5" placeholder="Absorption, bowl cleanup, changes made, timing observations…">{{ record.mix_notes or '' }}</textarea></label>
+        <input type="hidden" name="mix_stages_json" id="mix-stages-json">
+      </section>
+
+      <section class="form-section review-section">
+        <div class="section-number">05</div>
+        <div class="section-copy"><h2>Service Review</h2></div>
+        <div class="rating-editor span-all">
+          <span>Overall rating</span>
+          <div class="rating-options">
+            {% for number in range(1, 6) %}<label><input type="radio" name="overall_rating" value="{{ number }}" {% if record.overall_rating|string == number|string %}checked{% endif %}><span>{{ number }}★</span></label>{% endfor %}
+            <button class="text-button" type="button" id="clear-rating">Clear</button>
+          </div>
+        </div>
+        <div class="field-grid review-notes-grid">
+          <label class="span-all">Service performance notes<textarea name="service_notes" rows="6" placeholder="Opening, handling, bake, color, texture, flavor, fermentation…">{{ record.service_notes or '' }}</textarea></label>
+        </div>
+      </section>
+    {% endif %}
+
+    <div class="form-actions">
+      <a class="button" href="{% if form_kind == 'log' and record.id %}{{ url_for('main.log_detail', log_id=record.id) }}{% elif form_kind == 'template' %}{{ url_for('main.templates_list') }}{% else %}{{ url_for('main.index') }}{% endif %}">Cancel</a>
+      <button class="button primary large" type="submit">{% if form_kind == 'log' %}Save Dough Log{% else %}Save Recipe{% endif %}</button>
+    </div>
+  </div>
+
+  <aside class="calculator-preview" aria-live="polite">
+    <p class="eyebrow">Live calculation</p>
+    <div class="preview-total"><strong id="preview-total">—</strong><span>total dough</span></div>
+    <div class="preview-metrics">
+      <div><strong id="preview-ball">—</strong><span>per ball</span></div>
+      <div><strong id="preview-flour">—</strong><span>total flour</span></div>
+      <div><strong id="preview-pref">—</strong><span>preferment / flour</span></div>
+      <div><strong id="preview-protein">—</strong><span>overall protein</span></div>
+      <div><strong id="preview-ash">—</strong><span>overall ash</span></div>
+    </div>
+    <div id="preview-warnings"></div>
+    <div class="preview-table" id="preview-table"></div>
+    <p class="preview-note">Amounts include bowl residue compensation. Full preferment and final-mix breakdowns appear after saving.</p>
+  </aside>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+window.DOUGH_LOG = {
+  formula: {{ formula|tojson }},
+  flourLibrary: {{ flour_library|tojson }},
+  formKind: {{ form_kind|tojson }},
+  mixStages: {{ (record.mix_stages or [])|tojson }}
+};
+</script>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+{% endblock %}

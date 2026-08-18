@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}{{ log.title }} · {{ log.service_date|pretty_date }}{% endblock %}
+{% block content %}
+<section class="log-hero">
+  <div>
+    <h1>{{ log.service_date|pretty_date }}</h1>
+    <p>{{ log.title }} · Mixed {{ log.mix_datetime|pretty_datetime }}</p>
+  </div>
+  <div class="log-hero-actions">
+    <div class="rating large-rating" aria-label="{% if log.overall_rating %}{{ log.overall_rating }} out of 5{% else %}Not reviewed{% endif %}">
+      {% if log.overall_rating %}{{ '★' * log.overall_rating }}{{ '☆' * (5-log.overall_rating) }}{% else %}<span>Not reviewed</span>{% endif %}
+    </div>
+    <a class="button primary" href="{{ url_for('main.log_edit', log_id=log.id) }}">Edit Log</a>
+    <button class="button print-button" type="button" onclick="window.print()">Print</button>
+  </div>
+</section>
+
+<section class="metric-band">
+  <article><strong>{{ '%.0f'|format(log.calculated.target_weight_g) }} g</strong><span>Target Dough</span></article>
+  <article><strong>{{ log.calculated.ball_count }}</strong><span>Dough Balls</span></article>
+  <article><strong>{{ '%.0f'|format(log.calculated.single_ball_g) }} g</strong><span>Ball Weight</span></article>
+  <article><strong>{{ '%.2f'|format(log.formula.hydration_pct) }}%</strong><span>Hydration</span></article>
+  <article><strong>{{ '%.2f'|format(log.calculated.preferment_total_pct) }}%</strong><span>Preferment / Flour</span></article>
+  <article><strong>{% if log.calculated.overall_protein_pct is not none %}{{ '%.2f'|format(log.calculated.overall_protein_pct) }}%{% else %}—{% endif %}</strong><span>Overall Protein</span></article>
+  <article><strong>{% if log.calculated.overall_ash_pct is not none %}{{ '%.2f'|format(log.calculated.overall_ash_pct) }}%{% else %}—{% endif %}</strong><span>Overall Ash</span></article>
+</section>
+
+{% if log.calculated.warnings %}<div class="warning-panel"><strong>Formula checks</strong><ul>{% for warning in log.calculated.warnings %}<li>{{ warning }}</li>{% endfor %}</ul></div>{% endif %}
+
+<div class="detail-grid">
+  <section class="wide-card ingredient-card">
+    <div class="section-heading"><h2>Ingredient Totals</h2><span>{{ '%.0f'|format(log.calculated.scaled_target_g) }} g with residue allowance</span></div>
+    <div class="table-wrap">
+      <table class="formula-table">
+        <thead><tr><th>Ingredient</th><th>Used In</th><th>Baker’s %</th><th>Protein</th><th>Ash</th><th>Grams</th><th>Pounds</th></tr></thead>
+        <tbody>
+          {% for item in log.calculated.ingredients %}
+          <tr><td><span class="category-dot {{ item.category|lower }}"></span><strong>{{ item.name }}</strong></td><td>{{ item.source }}</td><td>{{ '%.3f'|format(item.pct) }}%</td><td>{% if item.protein_pct is defined and item.protein_pct is not none %}{{ '%.2f'|format(item.protein_pct) }}%{% else %}—{% endif %}</td><td>{% if item.ash_pct is defined and item.ash_pct is not none %}{{ '%.2f'|format(item.ash_pct) }}%{% else %}—{% endif %}</td><td>{{ '%.1f'|format(item.units.g) }}</td><td>{{ '%.3f'|format(item.units.lb) }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="wide-card preferment-card">
+    <div class="section-heading"><h2>Preferments</h2></div>
+    {% if log.calculated.preferments %}
+      <div class="preferment-detail-grid">
+      {% for pref in log.calculated.preferments %}
+        <article class="preferment-detail">
+          <div class="preferment-title"><div><p class="eyebrow">{{ pref.type }}</p><h3>{{ pref.name }}</h3></div><strong>{{ '%.1f'|format(pref.total_g) }} g</strong></div>
+          <dl>
+            <div><dt>Preferment / total flour</dt><dd>{{ '%.2f'|format(pref.amount_pct) }}%</dd></div>
+            <div><dt>Flour / total flour</dt><dd>{{ '%.2f'|format(pref.flour_pct_of_total) }}%</dd></div>
+            <div><dt>Flour balance in preferment</dt><dd>{{ '%.3f'|format(pref.flour_pct_of_preferment) }}%</dd></div>
+            {% for flour in pref.allocated_flours %}<div><dt>{{ flour.name }} · {{ '%.2f'|format(flour.blend_pct) }}% blend</dt><dd>{{ '%.1f'|format(flour.weight_g) }} g</dd></div>{% endfor %}
+            <div><dt>Water</dt><dd>{{ '%.1f'|format(pref.water_g) }} g</dd></div>
+            {% if pref.leavening_g %}<div><dt>{{ pref.leavening_type }}</dt><dd>{{ '%.2f'|format(pref.leavening_g) }} g</dd></div>{% endif %}
+          </dl>
+          {% if pref.notes %}<p class="note-copy">{{ pref.notes }}</p>{% endif %}
+        </article>
+      {% endfor %}
+      </div>
+    {% else %}<div class="empty-state compact"><p>No preferments in this formula.</p></div>{% endif %}
+  </section>
+
+  <section class="wide-card final-mix-card">
+    <div class="section-heading"><h2>Final Mix</h2></div>
+    <div class="compact-ingredient-grid">
+      {% for item in log.calculated.final_mix %}<div><span>{{ item.name }}</span><strong>{{ '%.1f'|format(item.weight_g) }} g</strong></div>{% endfor %}
+    </div>
+  </section>
+</div>
+
+<div class="two-column notes-grid">
+  <section class="wide-card">
+    <h2>Production Record</h2>
+    <dl class="condition-grid">
+      <div><dt>Room</dt><dd>{{ log.room_temp_f if log.room_temp_f is not none else '—' }}{% if log.room_temp_f is not none %}°F{% endif %}</dd></div>
+      <div><dt>Humidity</dt><dd>{{ log.humidity_pct if log.humidity_pct is not none else '—' }}{% if log.humidity_pct is not none %}%{% endif %}</dd></div>
+      <div><dt>Flour</dt><dd>{{ log.flour_temp_f if log.flour_temp_f is not none else '—' }}{% if log.flour_temp_f is not none %}°F{% endif %}</dd></div>
+      <div><dt>Water</dt><dd>{{ log.water_temp_f if log.water_temp_f is not none else '—' }}{% if log.water_temp_f is not none %}°F{% endif %}</dd></div>
+      <div><dt>Target FDT</dt><dd>{{ log.desired_final_dough_temp_f if log.desired_final_dough_temp_f is not none else '—' }}{% if log.desired_final_dough_temp_f is not none %}°F{% endif %}</dd></div>
+      <div><dt>Actual FDT</dt><dd>{{ log.final_dough_temp_f if log.final_dough_temp_f is not none else '—' }}{% if log.final_dough_temp_f is not none %}°F{% endif %}</dd></div>
+    </dl>
+    {% if log.mix_stages %}<div class="mix-time-total"><span>Total Mix Time</span><strong>{{ '%g'|format(log.total_mix_minutes) }} minutes</strong></div><div class="stage-timeline">{% for stage in log.mix_stages %}<div><span>{{ loop.index }}</span><p><strong>{{ stage.speed }} · {{ stage.minutes }} min</strong>{% if stage.notes %}<small>{{ stage.notes }}</small>{% endif %}</p></div>{% endfor %}</div>{% endif %}
+    <div class="note-block"><h3>Mix Notes</h3><p>{{ log.mix_notes or 'No mix notes recorded.' }}</p></div>
+  </section>
+
+  <section class="wide-card review-card">
+    <h2>Performance Review</h2>
+    <div class="note-block"><h3>Service Notes</h3><p>{{ log.service_notes or 'No service notes recorded yet.' }}</p></div>
+    {% if not log.overall_rating %}<a class="button primary" href="{{ url_for('main.log_edit', log_id=log.id) }}#review">Complete Review</a>{% endif %}
+  </section>
+</div>
+
+<section class="wide-card photo-section">
+  <div class="section-heading"><h2>Photo Reference</h2><span>{{ log.photos|length }} photo{% if log.photos|length != 1 %}s{% endif %}</span></div>
+  {% if log.photos %}
+    <div class="photo-grid">
+      {% for photo in log.photos %}
+        <figure><a href="{{ url_for('main.photo_file', filename=photo.filename) }}" target="_blank" rel="noopener"><img src="{{ url_for('main.photo_file', filename=photo.filename) }}" alt="{{ photo.caption or 'Finished pizza from ' ~ (log.service_date|pretty_date) }}" loading="lazy"></a>{% if photo.caption %}<figcaption>{{ photo.caption }}</figcaption>{% endif %}<form method="post" action="{{ url_for('main.photo_delete', photo_id=photo.id) }}" onsubmit="return confirm('Delete this photo?')"><button class="photo-delete" type="submit" aria-label="Delete photo">×</button></form></figure>
+      {% endfor %}
+    </div>
+  {% endif %}
+  <form class="photo-upload" method="post" enctype="multipart/form-data" action="{{ url_for('main.photo_upload', log_id=log.id) }}">
+    <label><span>Add pizza photos</span><input type="file" name="photos" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple required></label>
+    <label>Caption for this group<input name="caption" placeholder="Optional"></label>
+    <button class="button" type="submit">Upload Photos</button>
+  </form>
+</section>
+
+<section class="danger-zone no-print">
+  <details><summary>Delete this dough log</summary><p>This permanently removes the log and its photos.</p><form method="post" action="{{ url_for('main.log_delete', log_id=log.id) }}" onsubmit="return confirm('Delete this dough log and all of its photos?')"><button class="button danger" type="submit">Delete Dough Log</button></form></details>
+</section>
+{% endblock %}
