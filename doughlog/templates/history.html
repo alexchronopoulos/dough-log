@@ -13,13 +13,18 @@
   <button class="button" type="submit">Filter</button>
   {% if request.query_string %}<a class="text-link" href="{{ url_for('main.history') }}">Clear</a>{% endif %}
 </form>
-<section class="wide-card">
+<form class="wide-card history-compare-form" method="get" action="{{ url_for('main.compare_logs') }}">
+  <div class="comparison-toolbar">
+    <strong>Select two service days</strong>
+    <button class="button" type="submit">Compare Selected</button>
+  </div>
   <div class="history-table-wrap">
     <table class="history-table">
-      <thead><tr><th>Service</th><th>Recipe</th><th>Hydration</th><th>Flours Used</th><th>IDY</th><th>Protein</th><th>Ash</th><th>Rating</th><th></th></tr></thead>
+      <thead><tr><th>Compare</th><th>Service</th><th>Recipe</th><th>Hydration</th><th>Flours Used</th><th>IDY</th><th>Protein</th><th>Ash</th><th>Rating</th><th></th></tr></thead>
       <tbody>
         {% for log in logs %}
           <tr>
+            <td class="compare-check"><label><input type="checkbox" name="log" value="{{ log.id }}"><span class="sr-only">Compare {{ log.title }} from {{ log.service_date|pretty_date }}</span></label></td>
             <td><strong>{{ log.service_date|pretty_date }}</strong></td>
             <td>{{ log.title }}</td>
             <td>{{ '%.2f'|format(log.hydration_pct) }}%</td>
@@ -30,9 +35,9 @@
             <td><span class="rating">{% if log.overall_rating %}{{ '★' * log.overall_rating }}{{ '☆' * (5-log.overall_rating) }}{% else %}<span>Not reviewed</span>{% endif %}</span></td>
             <td><a href="{{ url_for('main.log_detail', log_id=log.id) }}">Open</a></td>
           </tr>
-        {% else %}<tr><td colspan="9"><div class="empty-state"><p>No service logs match those filters.</p></div></td></tr>{% endfor %}
+        {% else %}<tr><td colspan="10"><div class="empty-state"><p>No service logs match those filters.</p></div></td></tr>{% endfor %}
       </tbody>
     </table>
   </div>
-</section>
+</form>
 {% endblock %}

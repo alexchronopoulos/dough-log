@@ -163,7 +163,10 @@ def _log_view(row) -> dict[str, Any]:
     value = dict(row)
     value["formula"] = normalize_formula(_loads(value.pop("formula_json"), DEFAULT_FORMULA))
     value["calculated"] = _loads(value.pop("calculated_json"), {})
-    if "preferment_total_pct" not in value["calculated"]:
+    if (
+        "preferment_total_pct" not in value["calculated"]
+        or "overall_protein_pct" not in value["calculated"]
+    ):
         value["calculated"] = calculate_formula(value["formula"])
     value["mix_stages"] = _loads(value.pop("mix_stages_json"), [])
     value["total_mix_minutes"] = sum(
@@ -204,6 +207,178 @@ def _history_view(row) -> dict[str, Any]:
     value["overall_protein_pct"] = calculated.get("overall_protein_pct")
     value["overall_ash_pct"] = calculated.get("overall_ash_pct")
     return value
+
+
+def _comparison_metric(value: Any, digits: int = 2, suffix: str = "") -> str:
+    if value is None or value == "":
+        return "—"
+    try:
+        return f"{float(value):.{digits}f}{suffix}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _comparison_flours(items: list[dict[str, Any]]) -> str:
+    if not items:
+        return "—"
+    values = []
+    for item in items:
+        details = [f"{_comparison_metric(item.get('pct'), 2, '%')} blend"]
+        if item.get("protein_pct") is not None:
+            details.append(f"protein {_comparison_metric(item.get('protein_pct'), 2, '%')}")
+        if item.get("ash_pct") is not None:
+            details.append(f"ash {_comparison_metric(item.get('ash_pct'), 2, '%')}")
+        values.append(f"{item.get('name') or 'Unnamed flour'} · {', '.join(details)}")
+    return "; ".join(values)
+
+
+def _comparison_ingredients(items: list[dict[str, Any]]) -> str:
+    if not items:
+        return "—"
+    return "; ".join(
+        f"{item.get('name') or 'Unnamed ingredient'} · "
+        f"{_comparison_metric(item.get('pct'), 3, '%')}"
+        for item in items
+    )
+
+
+def _comparison_stages(items: list[dict[str, Any]]) -> str:
+    if not items:
+        return "—"
+    values = []
+    for index, item in enumerate(items, 1):
+        value = (
+            f"{index}. {item.get('speed') or 'Unspecified'} · "
+            f"{_comparison_metric(item.get('minutes'), 1, ' min')}"
+        )
+        if item.get("notes"):
+            value += f" · {item['notes']}"
+        values.append(value)
+    return "\n".join(values)
+
+
+def _ordered_union(left: list[Any], right: list[Any]) -> list[Any]:
+    values: list[Any] = []
+    for item in [*left, *right]:
+        if item not in values:
+            values.append(item)
+    return values
+
+
+def _comparison_sections(left: dict[str, Any], right: dict[str, Any]) -> list[dict[str, Any]]:
+    sections: list[dict[str, Any]] = []
+
+    def section(title: str, values: list[tuple[str, str, str]]) -> None:
+        sections.append(
+            {
+                "title": title,
+                "rows": [
+                    {
+                        "label": label,
+                        "left": left_value,
+                        "right": right_value,
+                        "changed": left_value != right_value,
+                    }
+                    for label, left_value, right_value in values
+                ],
+            }
+        )
+
+    section(
+        "Service Record",
+        [
+            ("Service date", pretty_date(left["service_date"]), pretty_date(right["service_date"])),
+            ("Log title", left["title"] or "—", right["title"] or "—"),
+            ("Mixed on", pretty_datetime(left["mix_datetime"]), pretty_datetime(right["mix_datetime"])),
+        ],
+    )
+
+    left_formula = left["formula"]
+    right_formula = right["formula"]
+    left_calculated = left["calculated"]
+    right_calculated = right["calculated"]
+    section(
+        "Batch & Formula",
+        [
+            ("Dough balls", _comparison_metric(left_formula["ball_count"], 0), _comparison_metric(right_formula["ball_count"], 0)),
+            ("Ball weight", _comparison_metric(left_formula["ball_weight_g"], 0, " g"), _comparison_metric(right_formula["ball_weight_g"], 0, " g")),
+            ("Target dough", _comparison_metric(left_calculated.get("target_weight_g"), 0, " g"), _comparison_metric(right_calculated.get("target_weight_g"), 0, " g")),
+            ("Hydration", _comparison_metric(left_formula["hydration_pct"], 2, "%"), _comparison_metric(right_formula["hydration_pct"], 2, "%")),
+            ("Salt", _comparison_metric(left_formula["salt_pct"], 2, "%"), _comparison_metric(right_formula["salt_pct"], 2, "%")),
+            ("Yeast type", left_formula["yeast_type"] or "—", right_formula["yeast_type"] or "—"),
+            ("Total yeast", _comparison_metric(left_formula["yeast_pct"], 3, "%"), _comparison_metric(right_formula["yeast_pct"], 3, "%")),
+            ("Bowl residue compensation", _comparison_metric(left_formula["residue_pct"], 2, "%"), _comparison_metric(right_formula["residue_pct"], 2, "%")),
+            ("Final-mix flour blend", _comparison_flours(left_formula["flours"]), _comparison_flours(right_formula["flours"])),
+            ("Additional ingredients", _comparison_ingredients(left_formula["ingredients"]), _comparison_ingredients(right_formula["ingredients"])),
+            ("Preferment / total flour", _comparison_metric(left_calculated.get("preferment_total_pct"), 2, "%"), _comparison_metric(right_calculated.get("preferment_total_pct"), 2, "%")),
+            ("Prefermented flour", _comparison_metric(left_calculated.get("prefermented_flour_pct"), 2, "%"), _comparison_metric(right_calculated.get("prefermented_flour_pct"), 2, "%")),
+            ("Overall protein", _comparison_metric(left_calculated.get("overall_protein_pct"), 2, "%"), _comparison_metric(right_calculated.get("overall_protein_pct"), 2, "%")),
+            ("Overall ash", _comparison_metric(left_calculated.get("overall_ash_pct"), 2, "%"), _comparison_metric(right_calculated.get("overall_ash_pct"), 2, "%")),
+        ],
+    )
+
+    left_preferments = {item["name"]: item for item in left_formula["preferments"]}
+    right_preferments = {item["name"]: item for item in right_formula["preferments"]}
+    preferment_rows: list[tuple[str, str, str]] = []
+    for name in _ordered_union(list(left_preferments), list(right_preferments)):
+        left_pref = left_preferments.get(name)
+        right_pref = right_preferments.get(name)
+        preferment_rows.extend(
+            [
+                (f"{name} · Included", "Yes" if left_pref else "No", "Yes" if right_pref else "No"),
+                (f"{name} · Type", left_pref.get("type", "—") if left_pref else "—", right_pref.get("type", "—") if right_pref else "—"),
+                (f"{name} · Preferment / total flour", _comparison_metric(left_pref.get("amount_pct") if left_pref else None, 2, "%"), _comparison_metric(right_pref.get("amount_pct") if right_pref else None, 2, "%")),
+                (f"{name} · Water / preferment", _comparison_metric(left_pref.get("water_pct") if left_pref else None, 2, "%"), _comparison_metric(right_pref.get("water_pct") if right_pref else None, 2, "%")),
+                (f"{name} · Leavening type", left_pref.get("leavening_type", "—") if left_pref else "—", right_pref.get("leavening_type", "—") if right_pref else "—"),
+                (f"{name} · Leavening / preferment", _comparison_metric(left_pref.get("leavening_pct") if left_pref else None, 3, "%"), _comparison_metric(right_pref.get("leavening_pct") if right_pref else None, 3, "%")),
+                (f"{name} · Flour blend", _comparison_flours(left_pref.get("flours", []) if left_pref else []), _comparison_flours(right_pref.get("flours", []) if right_pref else [])),
+                (f"{name} · Notes", left_pref.get("notes") or "—" if left_pref else "—", right_pref.get("notes") or "—" if right_pref else "—"),
+            ]
+        )
+    if preferment_rows:
+        section("Preferments", preferment_rows)
+
+    def ingredient_weights(log: dict[str, Any]) -> dict[tuple[str, str], str]:
+        return {
+            (item.get("name", "Unnamed"), item.get("source", "Formula")): (
+                f"{_comparison_metric(item.get('units', {}).get('g'), 1, ' g')} / "
+                f"{_comparison_metric(item.get('units', {}).get('lb'), 3, ' lb')}"
+            )
+            for item in log["calculated"].get("ingredients", [])
+        }
+
+    left_weights = ingredient_weights(left)
+    right_weights = ingredient_weights(right)
+    weight_rows = [
+        (f"{name} · {source}", left_weights.get((name, source), "—"), right_weights.get((name, source), "—"))
+        for name, source in _ordered_union(list(left_weights), list(right_weights))
+    ]
+    if weight_rows:
+        section("Calculated Ingredient Weights", weight_rows)
+
+    section(
+        "Mix & Conditions",
+        [
+            ("Room temperature", _comparison_metric(left.get("room_temp_f"), 1, "°F"), _comparison_metric(right.get("room_temp_f"), 1, "°F")),
+            ("Humidity", _comparison_metric(left.get("humidity_pct"), 1, "%"), _comparison_metric(right.get("humidity_pct"), 1, "%")),
+            ("Flour temperature", _comparison_metric(left.get("flour_temp_f"), 1, "°F"), _comparison_metric(right.get("flour_temp_f"), 1, "°F")),
+            ("Water temperature", _comparison_metric(left.get("water_temp_f"), 1, "°F"), _comparison_metric(right.get("water_temp_f"), 1, "°F")),
+            ("Desired final dough temperature", _comparison_metric(left.get("desired_final_dough_temp_f"), 1, "°F"), _comparison_metric(right.get("desired_final_dough_temp_f"), 1, "°F")),
+            ("Actual final dough temperature", _comparison_metric(left.get("final_dough_temp_f"), 1, "°F"), _comparison_metric(right.get("final_dough_temp_f"), 1, "°F")),
+            ("Total mix time", _comparison_metric(left.get("total_mix_minutes"), 1, " min"), _comparison_metric(right.get("total_mix_minutes"), 1, " min")),
+            ("Mix stages", _comparison_stages(left["mix_stages"]), _comparison_stages(right["mix_stages"])),
+            ("Mix notes", left.get("mix_notes") or "—", right.get("mix_notes") or "—"),
+        ],
+    )
+    section(
+        "Service Result",
+        [
+            ("Rating", _comparison_metric(left.get("overall_rating"), 0, " / 5"), _comparison_metric(right.get("overall_rating"), 0, " / 5")),
+            ("Service notes", left.get("service_notes") or "—", right.get("service_notes") or "—"),
+            ("Pizza photos", _comparison_metric(len(left["photos"]), 0), _comparison_metric(len(right["photos"]), 0)),
+        ],
+    )
+    return sections
 
 
 @bp.app_template_filter("pretty_date")
@@ -601,6 +776,56 @@ def history():
     query += " ORDER BY service_date DESC, id DESC"
     rows = [_history_view(row) for row in get_db().execute(query, values).fetchall()]
     return render_template("history.html", logs=rows)
+
+
+@bp.get("/compare")
+def compare_logs():
+    if "left" in request.args or "right" in request.args:
+        log_ids = [
+            request.args.get("left", type=int),
+            request.args.get("right", type=int),
+        ]
+    else:
+        log_ids = request.args.getlist("log", type=int)
+
+    if len(log_ids) != 2 or not all(log_ids) or log_ids[0] == log_ids[1]:
+        flash("Choose exactly two different dough logs to compare.", "error")
+        return redirect(url_for("main.history"))
+
+    left = _log_view(_log(log_ids[0]))
+    right = _log_view(_log(log_ids[1]))
+    sections = _comparison_sections(left, right)
+    difference_count = sum(
+        row["changed"] for section in sections for row in section["rows"]
+    )
+    matching_count = sum(
+        not row["changed"] for section in sections for row in section["rows"]
+    )
+    differences_only = request.args.get("differences") == "1"
+    visible_sections = []
+    for section in sections:
+        rows = (
+            [row for row in section["rows"] if row["changed"]]
+            if differences_only
+            else section["rows"]
+        )
+        if rows:
+            visible_sections.append({"title": section["title"], "rows": rows})
+
+    choices = get_db().execute(
+        "SELECT id, title, service_date FROM dough_logs "
+        "ORDER BY service_date DESC, id DESC"
+    ).fetchall()
+    return render_template(
+        "compare.html",
+        left=left,
+        right=right,
+        choices=choices,
+        sections=visible_sections,
+        difference_count=difference_count,
+        matching_count=matching_count,
+        differences_only=differences_only,
+    )
 
 
 @bp.post("/logs/<int:log_id>/photos")

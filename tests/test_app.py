@@ -71,31 +71,33 @@ def create_template(client):
     return int(response.headers["Location"].split("/")[-2])
 
 
-def create_log(client, template_id):
+def create_log(client, template_id, **overrides):
+    data = {
+        **formula_fields(),
+        "template_id": str(template_id),
+        "title": "Friday Service Dough",
+        "service_date": "2026-08-21",
+        "mix_datetime": "2026-08-19T09:30",
+        "room_temp_f": "72",
+        "humidity_pct": "58",
+        "flour_temp_f": "70",
+        "water_temp_f": "62",
+        "desired_final_dough_temp_f": "76",
+        "final_dough_temp_f": "77",
+        "mix_stages_json": json.dumps(
+            [
+                {"speed": "Low", "minutes": 5, "notes": "Combine"},
+                {"speed": "Medium", "minutes": 4, "notes": "Develop"},
+            ]
+        ),
+        "mix_notes": "Slightly faster cleanup than usual.",
+        "service_notes": "Opened easily and baked crisp.",
+        "overall_rating": "5",
+    }
+    data.update(overrides)
     response = client.post(
         "/logs/new",
-        data={
-            **formula_fields(),
-            "template_id": str(template_id),
-            "title": "Friday Service Dough",
-            "service_date": "2026-08-21",
-            "mix_datetime": "2026-08-19T09:30",
-            "room_temp_f": "72",
-            "humidity_pct": "58",
-            "flour_temp_f": "70",
-            "water_temp_f": "62",
-            "desired_final_dough_temp_f": "76",
-            "final_dough_temp_f": "77",
-            "mix_stages_json": json.dumps(
-                [
-                    {"speed": "Low", "minutes": 5, "notes": "Combine"},
-                    {"speed": "Medium", "minutes": 4, "notes": "Develop"},
-                ]
-            ),
-            "mix_notes": "Slightly faster cleanup than usual.",
-            "service_notes": "Opened easily and baked crisp.",
-            "overall_rating": "5",
-        },
+        data=data,
         follow_redirects=False,
     )
     assert response.status_code == 302
@@ -354,3 +356,53 @@ def test_history_filters_by_rating_and_shows_recipe_metrics(client, app):
     assert f"{calculated['overall_ash_pct']:.2f}%".encode() in response.data
     response = client.get("/history?rating=2")
     assert b"Friday Service Dough" not in response.data
+
+
+def test_compare_two_dough_logs_side_by_side(client):
+    template_id = create_template(client)
+    left_id = create_log(client, template_id)
+    right_id = create_log(
+        client,
+        template_id,
+        title="Saturday Service Dough",
+        service_date="2026-08-22",
+        hydration_pct="71",
+        ball_weight_g="650",
+        room_temp_f="75",
+        mix_notes="Needed more mixing.",
+        service_notes="More open crumb.",
+        overall_rating="4",
+    )
+
+    history = client.get("/history")
+    assert history.status_code == 200
+    assert b"Compare Selected" in history.data
+    assert history.data.count(b'name="log"') == 2
+
+    comparison = client.get(f"/compare?log={left_id}&log={right_id}")
+    assert comparison.status_code == 200
+    for content in (
+        b"Compare Dough Logs",
+        b"Friday Service Dough",
+        b"Saturday Service Dough",
+        b"68.00%",
+        b"71.00%",
+        b"Changed",
+        b"Batch &amp; Formula",
+        b"Calculated Ingredient Weights",
+        b"Mix &amp; Conditions",
+        b"Service Result",
+        b"High Mountain",
+    ):
+        assert content in comparison.data
+
+    differences_only = client.get(
+        f"/compare?left={left_id}&right={right_id}&differences=1"
+    )
+    assert differences_only.status_code == 200
+    assert b"Differences only" in differences_only.data
+    assert b"Yeast type" not in differences_only.data
+
+    invalid = client.get(f"/compare?log={left_id}", follow_redirects=True)
+    assert invalid.status_code == 200
+    assert b"Choose exactly two different dough logs to compare." in invalid.data

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Compare Dough Logs{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <h1>Compare Dough Logs</h1>
+  <a class="button" href="{{ url_for('main.history') }}">Back to History</a>
+</section>
+
+<form class="compare-picker" method="get">
+  <label>Left record<select name="left" required>{% for log in choices %}<option value="{{ log.id }}" {% if log.id == left.id %}selected{% endif %}>{{ log.service_date|pretty_date }} · {{ log.title }}</option>{% endfor %}</select></label>
+  <label>Right record<select name="right" required>{% for log in choices %}<option value="{{ log.id }}" {% if log.id == right.id %}selected{% endif %}>{{ log.service_date|pretty_date }} · {{ log.title }}</option>{% endfor %}</select></label>
+  <label class="compare-toggle"><input type="checkbox" name="differences" value="1" {% if differences_only %}checked{% endif %}>Differences only</label>
+  <button class="button primary" type="submit">Compare</button>
+</form>
+
+<div class="comparison-record-headings">
+  <article><span>Left</span><strong>{{ left.service_date|pretty_date }}</strong><small>{{ left.title }}</small><a href="{{ url_for('main.log_detail', log_id=left.id) }}">Open record</a></article>
+  <div class="comparison-vs">vs.</div>
+  <article><span>Right</span><strong>{{ right.service_date|pretty_date }}</strong><small>{{ right.title }}</small><a href="{{ url_for('main.log_detail', log_id=right.id) }}">Open record</a></article>
+</div>
+
+<div class="comparison-counts">
+  <strong>{{ difference_count }} difference{% if difference_count != 1 %}s{% endif %}</strong>
+  <span>{{ matching_count }} matching field{% if matching_count != 1 %}s{% endif %}</span>
+</div>
+
+<section class="wide-card comparison-card">
+  {% if sections %}
+    <div class="comparison-table-wrap">
+      <table class="comparison-table">
+        <thead><tr><th>Field</th><th>{{ left.service_date|pretty_date }}</th><th>{{ right.service_date|pretty_date }}</th></tr></thead>
+        <tbody>
+          {% for section in sections %}
+            <tr class="comparison-section-row"><th colspan="3">{{ section.title }}</th></tr>
+            {% for row in section.rows %}
+              <tr class="comparison-row {% if row.changed %}changed{% else %}matching{% endif %}">
+                <th>{{ row.label }}{% if row.changed %}<span class="change-mark">Changed</span>{% endif %}</th>
+                <td>{{ row.left }}</td>
+                <td>{{ row.right }}</td>
+              </tr>
+            {% endfor %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty-state"><p>These records have no differences in the compared fields.</p></div>
+  {% endif %}
+</section>
+{% endblock %}

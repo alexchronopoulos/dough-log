@@ -453,6 +453,40 @@ input[type="file"] { padding: 8px; }
 .danger-zone summary { color: var(--danger); font-weight: 700; cursor: pointer; }
 .filter-bar { display: grid; grid-template-columns: minmax(220px,1fr) 160px 160px 150px auto auto; gap: 11px; align-items: end; padding: 18px; margin-bottom: 20px; border: 2px solid var(--blue); border-radius: 12px; background: var(--cream); }
 .filter-bar label { display: grid; gap: 6px; color: var(--blue-dark); font-size: .68rem; font-weight: 700; letter-spacing: .06em; line-height: 1.25; text-transform: uppercase; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.history-compare-form { padding-top: 20px; }
+.comparison-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.comparison-toolbar strong { color: var(--blue-dark); font-family: "Compagnon", Georgia, serif; font-size: 1.35rem; font-weight: 500; }
+.compare-check { width: 74px; text-align: center !important; }
+.compare-check label { display: grid; place-items: center; cursor: pointer; }
+.compare-check input, .compare-toggle input { width: 20px; min-height: 20px; height: 20px; accent-color: var(--blue); }
+.compare-picker { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr) auto auto; gap: 12px; align-items: end; padding: 18px; margin-bottom: 22px; border: 2px solid var(--blue); border-radius: 12px; background: var(--cream); }
+.compare-picker > label:not(.compare-toggle) { display: grid; gap: 6px; color: var(--blue-dark); font-size: .68rem; font-weight: 700; letter-spacing: .06em; line-height: 1.25; text-transform: uppercase; }
+.compare-toggle { min-height: 48px; display: flex; align-items: center; gap: 8px; color: var(--blue-dark); font-weight: 700; white-space: nowrap; }
+.comparison-record-headings { display: grid; grid-template-columns: minmax(0, 1fr) 58px minmax(0, 1fr); gap: 14px; align-items: stretch; margin-bottom: 14px; }
+.comparison-record-headings article { display: grid; gap: 5px; padding: 18px 20px; border: 2px solid var(--blue); border-radius: 12px; background: var(--paper); box-shadow: var(--shadow); }
+.comparison-record-headings article > span { color: var(--orange); font-size: .64rem; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; }
+.comparison-record-headings strong { color: var(--blue-dark); font-family: "Compagnon", Georgia, serif; font-size: 1.5rem; font-weight: 500; line-height: 1.1; }
+.comparison-record-headings small { color: var(--muted); }
+.comparison-record-headings a { justify-self: start; font-weight: 700; }
+.comparison-vs { display: grid; place-items: center; color: var(--orange); font-family: "Compagnon", Georgia, serif; font-size: 1.5rem; }
+.comparison-counts { display: flex; align-items: center; gap: 12px; margin: 0 0 18px; }
+.comparison-counts strong { color: var(--blue); }
+.comparison-counts span { color: var(--muted); }
+.comparison-card { padding: 0; overflow: hidden; }
+.comparison-table-wrap { overflow-x: auto; }
+.comparison-table { width: 100%; min-width: 820px; border-collapse: separate; border-spacing: 0; table-layout: fixed; }
+.comparison-table th, .comparison-table td { padding: 14px 16px; border-bottom: 1px solid var(--line); vertical-align: top; text-align: left; }
+.comparison-table thead th { color: var(--muted); background: var(--cream-pale); font-size: .68rem; font-weight: 700; letter-spacing: .08em; line-height: 1.25; text-transform: uppercase; }
+.comparison-table thead th:first-child { width: 25%; }
+.comparison-table thead th:not(:first-child) { width: 37.5%; }
+.comparison-section-row th { padding: 12px 16px; color: var(--cream); background: var(--blue); font-family: "Compagnon", Georgia, serif; font-size: 1.25rem; font-weight: 500; }
+.comparison-row > th { color: var(--blue-dark); background: rgba(245, 241, 221, .55); }
+.comparison-row td { line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.comparison-row.changed td:nth-child(2) { background: var(--orange-pale); box-shadow: inset 5px 0 0 var(--orange); }
+.comparison-row.changed td:nth-child(3) { background: var(--green-pale); box-shadow: inset 5px 0 0 var(--green); }
+.comparison-row.matching { color: var(--muted); }
+.change-mark { display: inline-block; padding: 3px 6px; margin-left: 8px; border-radius: 5px; color: var(--blue-dark); background: var(--orange); font-family: "Semplicita", Arial, sans-serif; font-size: .58rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; vertical-align: middle; }
 
 @media (max-width: 1180px) {
   .editor-layout { grid-template-columns: 1fr; }
@@ -462,6 +496,7 @@ input[type="file"] { padding: 8px; }
   .template-grid { grid-template-columns: repeat(2, 1fr); }
   .photo-grid { grid-template-columns: repeat(3, 1fr); }
   .filter-bar { grid-template-columns: repeat(3, 1fr); }
+  .compare-picker { grid-template-columns: 1fr 1fr; }
 }
 
 @media (max-width: 860px) {
@@ -525,6 +560,12 @@ input[type="file"] { padding: 8px; }
   .photo-grid { grid-template-columns: repeat(2, 1fr); }
   .photo-upload { grid-template-columns: 1fr; }
   .filter-bar { grid-template-columns: 1fr 1fr; }
+  .comparison-toolbar { align-items: stretch; flex-direction: column; }
+  .comparison-toolbar .button { align-self: flex-start; }
+  .compare-picker { grid-template-columns: 1fr; }
+  .comparison-record-headings { grid-template-columns: 1fr; }
+  .comparison-vs { min-height: 36px; }
+  .comparison-counts { align-items: flex-start; flex-direction: column; gap: 4px; }
 }
 
 @media (max-width: 460px) {
@@ -560,7 +601,7 @@ input[type="file"] { padding: 8px; }
 
 @media print {
   body { color: black; background: white; }
-  .site-header, .log-hero-actions, .photo-upload, .danger-zone, .no-print { display: none !important; }
+  .site-header, .log-hero-actions, .photo-upload, .danger-zone, .no-print, .compare-picker, .page-heading .button { display: none !important; }
   main { width: 100%; padding: 0; }
   .wide-card, .metric-band { border-color: #777; box-shadow: none; break-inside: avoid; }
   .photo-grid { grid-template-columns: repeat(4, 1fr); }

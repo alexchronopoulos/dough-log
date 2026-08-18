@@ -14,6 +14,7 @@ A private, Pi-ready dough calculator and service-day production journal. Each lo
 - Post-service rating, service notes, and finished-pizza photo uploads
 - Reusable flour library with protein and ash values that autofill recipe flour pick lists
 - At-a-glance history metrics for hydration, flour blend, IDY, protein, and ash
+- Side-by-side comparison of any two service-day records, with changed values highlighted and a differences-only view
 - Multiple finished-pizza photos, including iPhone HEIC/HEIF support
 - History search/filtering, print layout, JSON record export, and a health-check endpoint
 - Optional app-level HTTP Basic Authentication for every page, record, photo, and static asset
