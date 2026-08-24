@@ -546,11 +546,14 @@ def test_brand_assets_are_packaged_and_served(client):
     page = client.get("/")
     assert page.status_code == 200
     assert b"assets/pm-horizontal-logo-cream.png" in page.data
+    assert b'rel="icon" type="image/png"' in page.data
+    assert b"assets/pm-icon-black.png" in page.data
 
     expected_assets = {
         "compagnon-medium.otf": "font/otf",
         "semplicita-modern-book.otf": "font/otf",
         "pm-horizontal-logo-cream.png": "image/png",
+        "pm-icon-black.png": "image/png",
     }
     for filename, mimetype in expected_assets.items():
         response = client.get(f"/static/assets/{filename}")

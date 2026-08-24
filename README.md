@@ -23,7 +23,7 @@ A private, Pi-ready dough calculator and service-day production journal. Each lo
 - Multiple finished-pizza photos, including iPhone HEIC/HEIF support
 - History search/filtering, print layout, JSON record export, and a health-check endpoint
 - Optional app-level HTTP Basic Authentication for every page, record, photo, and static asset
-- Pizzeria Mari's Compagnon and Semplicita typography, cream horizontal logo, and shared blue/cream/orange/green visual system
+- Pizzeria Mari's Compagnon and Semplicita typography, cream horizontal logo, black icon favicon, and shared blue/cream/orange/green visual system
 - Responsive layouts for desktop, iPhone, iPad, and Android
 
 ## Quick local test
