@@ -24,6 +24,7 @@ from flask import (
 from PIL import Image, ImageOps, UnidentifiedImageError
 from werkzeug.utils import secure_filename
 
+from .blend import BlendError, solve_flour_blend
 from .calculator import DEFAULT_FORMULA, FormulaError, calculate_formula, normalize_formula
 from .db import get_db
 
@@ -111,22 +112,29 @@ def _flour_library() -> list[dict[str, Any]]:
     return [
         dict(row)
         for row in get_db()
-        .execute("SELECT * FROM flour_library ORDER BY name COLLATE NOCASE")
+        .execute(
+            "SELECT * FROM flour_library "
+            "ORDER BY CASE WHEN mill = '' THEN 1 ELSE 0 END, "
+            "mill COLLATE NOCASE, name COLLATE NOCASE"
+        )
         .fetchall()
     ]
 
 
-def _flour_values() -> tuple[str, float, float]:
+def _flour_values() -> tuple[str, str, float, float]:
+    mill = request.form.get("mill", "").strip()
     name = request.form.get("name", "").strip()
     protein_pct = _optional_float("protein_pct")
     ash_pct = _optional_float("ash_pct")
+    if not mill:
+        raise FormulaError("Mill is required.")
     if not name:
         raise FormulaError("Flour name is required.")
     if protein_pct is None or not 0 <= protein_pct <= 100:
         raise FormulaError("Protein must be a percentage between 0 and 100.")
     if ash_pct is None or not 0 <= ash_pct <= 100:
         raise FormulaError("Ash must be a percentage between 0 and 100.")
-    return name, protein_pct, ash_pct
+    return mill, name, protein_pct, ash_pct
 
 
 def _recipe_choices() -> list[dict[str, Any]]:
@@ -431,14 +439,14 @@ def templates_list():
 def flours():
     if request.method == "POST":
         try:
-            name, protein_pct, ash_pct = _flour_values()
+            mill, name, protein_pct, ash_pct = _flour_values()
             now = _now()
             get_db().execute(
                 """
-                INSERT INTO flour_library (name, protein_pct, ash_pct, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO flour_library (mill, name, protein_pct, ash_pct, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (name, protein_pct, ash_pct, now, now),
+                (mill, name, protein_pct, ash_pct, now, now),
             )
             get_db().commit()
         except FormulaError as error:
@@ -451,19 +459,110 @@ def flours():
     return render_template("flours.html", flours=_flour_library())
 
 
+@bp.route("/flours/blend", methods=("GET", "POST"))
+def flour_blend():
+    flours = _flour_library()
+    for flour in flours:
+        flour["mill_key"] = flour["mill"] or "__unspecified__"
+        flour["mill_label"] = flour["mill"] or "Unspecified"
+    mills = []
+    for flour in flours:
+        if not any(item["value"] == flour["mill_key"] for item in mills):
+            mills.append({"value": flour["mill_key"], "label": flour["mill_label"]})
+    default_ids = [str(flour["id"]) for flour in flours[:4]]
+    form = {
+        "target_protein_pct": "",
+        "target_ash_pct": "",
+        "minimum_flour_pct": "1",
+        **{
+            f"flour_{position}_id": default_ids[position - 1]
+            if len(default_ids) >= position
+            else ""
+            for position in range(1, 5)
+        },
+    }
+    flour_map = {str(flour["id"]): flour for flour in flours}
+    form.update(
+        {
+            f"flour_{position}_mill": flour_map[form[f"flour_{position}_id"]]["mill_key"]
+            if form[f"flour_{position}_id"]
+            else ""
+            for position in range(1, 5)
+        }
+    )
+
+    if len(flours) >= 4 and request.method == "GET":
+        selected_defaults = [flour_map[form[f"flour_{position}_id"]] for position in range(1, 5)]
+        form["target_protein_pct"] = f"{sum(item['protein_pct'] for item in selected_defaults) / 4:.3f}"
+        form["target_ash_pct"] = f"{sum(item['ash_pct'] for item in selected_defaults) / 4:.3f}"
+
+    result = None
+    error = None
+    if request.method == "POST":
+        form.update({field: request.form.get(field, "").strip() for field in form})
+        try:
+            if len(flours) < 4:
+                raise BlendError("Add at least four flours to the Flour Library first.")
+
+            def selected(field: str, mill_field: str) -> dict[str, Any]:
+                flour = flour_map.get(form[field])
+                if flour is None:
+                    raise BlendError("Choose all four flour positions from the Flour Library.")
+                if flour["mill_key"] != form[mill_field]:
+                    raise BlendError("Choose a flour from the selected mill for every blend position.")
+                return flour
+
+            def percentage(field: str, label: str) -> float:
+                try:
+                    value = float(form[field])
+                except ValueError as value_error:
+                    raise BlendError(f"{label} must be a number.") from value_error
+                if not 0 <= value <= 100:
+                    raise BlendError(f"{label} must be between 0% and 100%.")
+                return value
+
+            selected_flours = [
+                selected(f"flour_{position}_id", f"flour_{position}_mill")
+                for position in range(1, 5)
+            ]
+            if len({flour["id"] for flour in selected_flours}) != 4:
+                raise BlendError("Choose four different flours.")
+
+            target_protein = percentage("target_protein_pct", "Desired protein")
+            target_ash = percentage("target_ash_pct", "Desired ash")
+            minimum_flour = percentage("minimum_flour_pct", "Minimum each flour")
+            result = solve_flour_blend(
+                selected_flours,
+                target_protein_pct=target_protein,
+                target_ash_pct=target_ash,
+                minimum_flour_pct=minimum_flour,
+            )
+        except BlendError as blend_error:
+            error = str(blend_error)
+
+    return render_template(
+        "flour_blend.html",
+        flours=flours,
+        mills=mills,
+        form=form,
+        result=result,
+        error=error,
+    )
+
+
 @bp.post("/flours/<int:flour_id>/edit")
 def flour_edit(flour_id: int):
     if get_db().execute("SELECT id FROM flour_library WHERE id = ?", (flour_id,)).fetchone() is None:
         abort(404)
     try:
-        name, protein_pct, ash_pct = _flour_values()
+        mill, name, protein_pct, ash_pct = _flour_values()
         get_db().execute(
             """
             UPDATE flour_library
-            SET name = ?, protein_pct = ?, ash_pct = ?, updated_at = ?
+            SET mill = ?, name = ?, protein_pct = ?, ash_pct = ?, updated_at = ?
             WHERE id = ?
             """,
-            (name, protein_pct, ash_pct, _now(), flour_id),
+            (mill, name, protein_pct, ash_pct, _now(), flour_id),
         )
         get_db().commit()
     except FormulaError as error:

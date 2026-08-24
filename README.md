@@ -13,7 +13,11 @@ A private, Pi-ready dough calculator and service-day production journal. Each lo
 - One selectable default recipe that pre-populates every formula input in future recipes
 - Mix date/time, room temperature, humidity, ingredient temperatures, desired/actual final dough temperature, staged mixing speeds/durations, summed total mix time, and mix notes
 - Post-service rating, service notes, and finished-pizza photo uploads
-- Reusable flour library with protein and ash values that autofill recipe flour pick lists
+- Reusable flour library with mill, protein, and ash values that autofill recipe flour pick lists
+- Four-flour blend solver with a mill filter for each selection, targeting overall protein and ash while favoring near-equal portions and enforcing a configurable positive minimum for every flour
+- Linked whole-number flour-share sliders that always total 100% and update protein, ash, and target deltas live
+- Per-flour locks that hold selected slider percentages while unlocked flours rebalance automatically
+- Optional 0% flour minimum for exploring two- and three-flour blends
 - At-a-glance history metrics for hydration, flour blend, IDY, protein, and ash
 - Side-by-side comparison of any two service-day records, with changed values highlighted and a differences-only view
 - Multiple finished-pizza photos, including iPhone HEIC/HEIF support

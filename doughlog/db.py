@@ -46,6 +46,20 @@ def init_db() -> None:
         "CREATE UNIQUE INDEX IF NOT EXISTS recipe_templates_one_default_idx "
         "ON recipe_templates(is_default) WHERE is_default = 1"
     )
+
+    flour_columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(flour_library)").fetchall()
+    }
+    if "mill" not in flour_columns:
+        connection.execute(
+            "ALTER TABLE flour_library "
+            "ADD COLUMN mill TEXT NOT NULL DEFAULT ''"
+        )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS flour_library_mill_idx "
+        "ON flour_library(mill COLLATE NOCASE, name COLLATE NOCASE)"
+    )
     connection.commit()
 
 

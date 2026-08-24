@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from doughlog.blend import BlendError, solve_flour_blend
 from doughlog.calculator import DEFAULT_FORMULA, FormulaError, calculate_formula
 
 
@@ -135,3 +136,156 @@ def test_rejects_preferment_components_above_100_percent():
     }
     with pytest.raises(FormulaError, match="cannot exceed 100%"):
         calculate_formula(formula)
+
+
+def test_flour_blend_solver_hits_protein_and_ash_targets():
+    flours = [
+        {"mill": "North Mill", "name": "Flour A", "protein_pct": 14, "ash_pct": 0.6},
+        {"name": "Flour B", "protein_pct": 10, "ash_pct": 1.0},
+        {"name": "Flour C", "protein_pct": 12, "ash_pct": 1.4},
+        {"name": "Flour D", "protein_pct": 16, "ash_pct": 0.4},
+    ]
+    result = solve_flour_blend(
+        flours,
+        target_protein_pct=13,
+        target_ash_pct=0.85,
+    )
+
+    assert result["is_exact"] is True
+    assert result["rows"][0]["mill"] == "North Mill"
+    assert [row["blend_pct"] for row in result["rows"]] == pytest.approx([25, 25, 25, 25])
+    assert result["achieved_protein_pct"] == pytest.approx(13)
+    assert result["achieved_ash_pct"] == pytest.approx(0.85)
+    assert sum(row["blend_pct"] for row in result["rows"]) == pytest.approx(100)
+
+
+def test_flour_blend_solver_favors_near_equal_exact_solution():
+    result = solve_flour_blend(
+        [
+            {"name": "Flour A", "protein_pct": 14, "ash_pct": 0.6},
+            {"name": "Flour B", "protein_pct": 10, "ash_pct": 1.0},
+            {"name": "Flour C", "protein_pct": 12, "ash_pct": 1.4},
+            {"name": "Flour D", "protein_pct": 16, "ash_pct": 0.4},
+        ],
+        target_protein_pct=12.6,
+        target_ash_pct=0.86,
+    )
+
+    assert result["is_exact"] is True
+    assert result["achieved_protein_pct"] == pytest.approx(12.6)
+    assert result["achieved_ash_pct"] == pytest.approx(0.86)
+    assert [row["blend_pct"] for row in result["rows"]] == pytest.approx([25, 35, 20, 20])
+
+
+def test_flour_blend_solver_returns_closest_bounded_blend_when_needed():
+    result = solve_flour_blend(
+        [
+            {"name": "Flour A", "protein_pct": 14, "ash_pct": 0.6},
+            {"name": "Flour B", "protein_pct": 10, "ash_pct": 1.0},
+            {"name": "Flour C", "protein_pct": 12, "ash_pct": 1.4},
+            {"name": "Flour D", "protein_pct": 16, "ash_pct": 0.4},
+        ],
+        target_protein_pct=20,
+        target_ash_pct=3,
+    )
+
+    assert result["is_exact"] is False
+    assert sum(row["blend_pct"] for row in result["rows"]) == pytest.approx(100)
+    for row in result["rows"]:
+        assert 1 <= row["blend_pct"] <= 97
+
+
+def test_flour_blend_solver_respects_custom_minimum_for_every_flour():
+    result = solve_flour_blend(
+        [
+            {"name": "Flour A", "protein_pct": 14, "ash_pct": 0.6},
+            {"name": "Flour B", "protein_pct": 10, "ash_pct": 1.0},
+            {"name": "Flour C", "protein_pct": 12, "ash_pct": 1.4},
+            {"name": "Flour D", "protein_pct": 16, "ash_pct": 0.4},
+        ],
+        target_protein_pct=20,
+        target_ash_pct=3,
+        minimum_flour_pct=5,
+    )
+
+    assert result["minimum_flour_pct"] == 5
+    assert sum(row["blend_pct"] for row in result["rows"]) == pytest.approx(100)
+    assert all(row["blend_pct"] >= 5 for row in result["rows"])
+
+
+def test_flour_blend_solver_returns_only_whole_number_shares():
+    result = solve_flour_blend(
+        [
+            {"name": "Flour A", "protein_pct": 14, "ash_pct": 0.6},
+            {"name": "Flour B", "protein_pct": 10, "ash_pct": 1.0},
+            {"name": "Flour C", "protein_pct": 12, "ash_pct": 1.4},
+            {"name": "Flour D", "protein_pct": 16, "ash_pct": 0.4},
+        ],
+        target_protein_pct=13.123,
+        target_ash_pct=0.877,
+    )
+
+    shares = [row["blend_pct"] for row in result["rows"]]
+    assert all(isinstance(share, int) for share in shares)
+    assert sum(shares) == 100
+
+
+def test_flour_blend_solver_allows_zero_minimum_for_smaller_blends():
+    result = solve_flour_blend(
+        [
+            {"name": "Flour A", "protein_pct": 14, "ash_pct": 0.6},
+            {"name": "Flour B", "protein_pct": 10, "ash_pct": 1.0},
+            {"name": "Flour C", "protein_pct": 12, "ash_pct": 1.4},
+            {"name": "Flour D", "protein_pct": 16, "ash_pct": 0.4},
+        ],
+        target_protein_pct=12,
+        target_ash_pct=1.4,
+        minimum_flour_pct=0,
+    )
+
+    shares = [row["blend_pct"] for row in result["rows"]]
+    assert result["is_exact"] is True
+    assert shares == [0, 0, 100, 0]
+
+
+def test_flour_blend_solver_rejects_negative_minimum():
+    with pytest.raises(BlendError, match="between 0% and 25%"):
+        solve_flour_blend(
+            [
+                {"name": "Flour A", "protein_pct": 14, "ash_pct": 0.6},
+                {"name": "Flour B", "protein_pct": 10, "ash_pct": 1.0},
+                {"name": "Flour C", "protein_pct": 12, "ash_pct": 1.4},
+                {"name": "Flour D", "protein_pct": 16, "ash_pct": 0.4},
+            ],
+            target_protein_pct=13,
+            target_ash_pct=0.85,
+            minimum_flour_pct=-1,
+        )
+
+
+def test_flour_blend_solver_rejects_fractional_minimum():
+    with pytest.raises(BlendError, match="whole-number"):
+        solve_flour_blend(
+            [
+                {"name": "Flour A", "protein_pct": 14, "ash_pct": 0.6},
+                {"name": "Flour B", "protein_pct": 10, "ash_pct": 1.0},
+                {"name": "Flour C", "protein_pct": 12, "ash_pct": 1.4},
+                {"name": "Flour D", "protein_pct": 16, "ash_pct": 0.4},
+            ],
+            target_protein_pct=13,
+            target_ash_pct=0.85,
+            minimum_flour_pct=1.5,
+        )
+
+
+def test_flour_blend_solver_requires_four_flours():
+    with pytest.raises(BlendError, match="exactly four"):
+        solve_flour_blend(
+            [
+                {"name": "Flour A", "protein_pct": 14, "ash_pct": 0.8},
+                {"name": "Flour B", "protein_pct": 12, "ash_pct": 0.6},
+                {"name": "Flour C", "protein_pct": 13, "ash_pct": 0.7},
+            ],
+            target_protein_pct=12.5,
+            target_ash_pct=0.65,
+        )

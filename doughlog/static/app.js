@@ -26,8 +26,10 @@
     const savedFormulaOption = currentName && !currentExists
       ? `<option value="${escapeHtml(currentName)}" selected>${escapeHtml(currentName)} · saved formula</option>`
       : "";
-    const libraryOptions = flourLibrary.map((flour) => `
-      <option value="${escapeHtml(flour.name)}" ${flour.name === currentName ? "selected" : ""}>${escapeHtml(flour.name)}</option>`).join("");
+    const libraryOptions = flourLibrary.map((flour) => {
+      const label = flour.mill ? `${flour.mill} · ${flour.name}` : flour.name;
+      return `<option value="${escapeHtml(flour.name)}" ${flour.name === currentName ? "selected" : ""}>${escapeHtml(label)}</option>`;
+    }).join("");
     return `<option value="">Choose saved flour…</option>${savedFormulaOption}${libraryOptions}`;
   };
   const flourRow = (item, attributes = "") => `

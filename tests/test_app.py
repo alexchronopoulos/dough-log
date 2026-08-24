@@ -254,7 +254,7 @@ def test_default_recipe_prefills_future_recipe_formulas(client, app):
         ).fetchone()[0] == 0
 
 
-def test_existing_database_is_migrated_for_default_recipes(tmp_path):
+def test_existing_database_is_migrated_for_default_recipes_and_flour_mills(tmp_path):
     database = tmp_path / "legacy.sqlite3"
     connection = sqlite3.connect(database)
     connection.execute(
@@ -268,6 +268,25 @@ def test_existing_database_is_migrated_for_default_recipes(tmp_path):
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE flour_library (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+            protein_pct REAL NOT NULL,
+            ash_pct REAL NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO flour_library
+            (name, protein_pct, ash_pct, created_at, updated_at)
+        VALUES ('Legacy Flour', 12.5, 0.6, '2026-08-18', '2026-08-18')
         """
     )
     connection.commit()
@@ -291,6 +310,16 @@ def test_existing_database_is_migrated_for_default_recipes(tmp_path):
             ).fetchall()
         }
         assert "is_default" in columns
+        flour_columns = {
+            row["name"]
+            for row in get_db().execute(
+                "PRAGMA table_info(flour_library)"
+            ).fetchall()
+        }
+        assert "mill" in flour_columns
+        assert get_db().execute(
+            "SELECT mill FROM flour_library WHERE name = 'Legacy Flour'"
+        ).fetchone()["mill"] == ""
 
 
 def test_home_is_a_simple_utility_dashboard(client):
@@ -329,7 +358,12 @@ def test_page_and_form_header_helper_text_is_removed(client):
 def test_flour_library_is_reusable_in_formula_pick_lists(client, app):
     response = client.post(
         "/flours",
-        data={"name": "High Mountain", "protein_pct": "13.5", "ash_pct": "0.65"},
+        data={
+            "mill": "Central Milling",
+            "name": "High Mountain",
+            "protein_pct": "13.5",
+            "ash_pct": "0.65",
+        },
         follow_redirects=True,
     )
     assert response.status_code == 200
@@ -338,11 +372,13 @@ def test_flour_library_is_reusable_in_formula_pick_lists(client, app):
     recipe = client.get("/templates/new")
     assert recipe.status_code == 200
     assert b'"name": "High Mountain"' in recipe.data
+    assert b'"mill": "Central Milling"' in recipe.data
     assert b'"protein_pct": 13.5' in recipe.data
     script = client.get("/static/app.js")
     assert b"Choose saved flour" in script.data
     assert b"selectedFlour.protein_pct" in script.data
     assert b"selectedFlour.ash_pct" in script.data
+    assert b"flour.mill" in script.data
 
     with app.app_context():
         flour_id = get_db().execute(
@@ -350,15 +386,160 @@ def test_flour_library_is_reusable_in_formula_pick_lists(client, app):
         ).fetchone()[0]
     client.post(
         f"/flours/{flour_id}/edit",
-        data={"name": "High Mountain", "protein_pct": "13.7", "ash_pct": "0.67"},
+        data={
+            "mill": "Cairnspring Mills",
+            "name": "High Mountain",
+            "protein_pct": "13.7",
+            "ash_pct": "0.67",
+        },
     )
     with app.app_context():
         flour = get_db().execute("SELECT * FROM flour_library WHERE id = ?", (flour_id,)).fetchone()
+        assert flour["mill"] == "Cairnspring Mills"
         assert flour["protein_pct"] == 13.7
         assert flour["ash_pct"] == 0.67
 
     exported = client.get("/export.json").get_json()
     assert exported["flours"][0]["name"] == "High Mountain"
+    assert exported["flours"][0]["mill"] == "Cairnspring Mills"
+
+
+def test_flour_blend_calculator_uses_library_flours(client, app):
+    flour_data = [
+        ("North Mill", "Flour A", "14", "0.6"),
+        ("South Mill", "Flour B", "10", "1.0"),
+        ("East Mill", "Flour C", "12", "1.4"),
+        ("West Mill", "Flour D", "16", "0.4"),
+    ]
+    for mill, name, protein, ash in flour_data:
+        response = client.post(
+            "/flours",
+            data={"mill": mill, "name": name, "protein_pct": protein, "ash_pct": ash},
+        )
+        assert response.status_code == 302
+
+    library_page = client.get("/flours")
+    assert b"Blend Calculator" in library_page.data
+    with app.app_context():
+        flour_ids = {
+            row["name"]: row["id"]
+            for row in get_db().execute("SELECT id, name FROM flour_library")
+        }
+    selected_flours = {
+        "minimum_flour_pct": "1",
+        "flour_1_mill": "North Mill",
+        "flour_2_mill": "South Mill",
+        "flour_3_mill": "East Mill",
+        "flour_4_mill": "West Mill",
+        "flour_1_id": str(flour_ids["Flour A"]),
+        "flour_2_id": str(flour_ids["Flour B"]),
+        "flour_3_id": str(flour_ids["Flour C"]),
+        "flour_4_id": str(flour_ids["Flour D"]),
+    }
+
+    response = client.post(
+        "/flours/blend",
+        data={
+            "target_protein_pct": "13",
+            "target_ash_pct": "0.85",
+            **selected_flours,
+        },
+    )
+    assert response.status_code == 200
+    for content in (
+        b"Flour Blend Calculator",
+        b"Exact Target",
+        b"Calculated Four-Flour Blend",
+        b"Minimum each flour",
+        b"data-blend-output>25</output>%",
+        b"data-live-total>100",
+        b"13.000%",
+        b"0.850%",
+        b"Flour Distribution",
+        b"North Mill",
+        b"South Mill",
+        b"East Mill",
+        b"West Mill",
+        b'data-mill-select',
+        b'data-flour-select',
+    ):
+        assert content in response.data
+    for removed in (b"Poolish Formula", b"Final Mix Flours", b"Poolish Flours"):
+        assert removed not in response.data
+    assert response.data.count(b'type="range"') == 4
+    assert response.data.count(b'step="1"') >= 5
+    assert response.data.count(b'type="checkbox" aria-label="Lock') == 4
+    for behavior in (
+        b"data-blend-editor",
+        b"data-live-protein",
+        b"data-live-ash",
+        b"data-reset-blend",
+        b"const redistribute",
+        b"Manual Adjustment",
+        b"data-blend-lock",
+        b"is-required-balance",
+        b"Locked at",
+    ):
+        assert behavior in response.data
+
+    closest = client.post(
+        "/flours/blend",
+        data={
+            "target_protein_pct": "20",
+            "target_ash_pct": "3",
+            **selected_flours,
+            "minimum_flour_pct": "5",
+        },
+    )
+    assert b"Closest Available Blend" in closest.data
+    assert b"every flour at or above 5%" in closest.data
+
+    zero_minimum = client.post(
+        "/flours/blend",
+        data={
+            "target_protein_pct": "12",
+            "target_ash_pct": "1.4",
+            **selected_flours,
+            "minimum_flour_pct": "0",
+        },
+    )
+    assert zero_minimum.status_code == 200
+    assert zero_minimum.data.count(b"data-blend-output>0</output>%") == 3
+    assert b"data-blend-output>100</output>%" in zero_minimum.data
+
+    fractional_minimum = client.post(
+        "/flours/blend",
+        data={
+            "target_protein_pct": "13",
+            "target_ash_pct": "0.85",
+            **selected_flours,
+            "minimum_flour_pct": "1.5",
+        },
+    )
+    assert b"whole-number percentage" in fractional_minimum.data
+
+    wrong_mill = client.post(
+        "/flours/blend",
+        data={
+            "target_protein_pct": "13",
+            "target_ash_pct": "0.85",
+            **selected_flours,
+            "flour_1_mill": "South Mill",
+        },
+    )
+    assert b"Choose a flour from the selected mill" in wrong_mill.data
+
+    duplicate = client.post(
+        "/flours/blend",
+        data={
+            "target_protein_pct": "13",
+            "target_ash_pct": "0.85",
+            **selected_flours,
+            "flour_4_mill": "North Mill",
+            "flour_4_id": str(flour_ids["Flour A"]),
+        },
+    )
+    assert b"Choose four different flours" in duplicate.data
 
 
 def test_brand_assets_are_packaged_and_served(client):

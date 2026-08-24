@@ -3,13 +3,15 @@
 {% block content %}
 <section class="page-heading">
   <h1>Flour Library</h1>
+  <a class="button" href="{{ url_for('main.flour_blend') }}">Blend Calculator</a>
 </section>
 
 <div class="flour-library-layout">
   <section class="wide-card flour-create-card">
     <div class="section-heading"><h2>Add to Library</h2></div>
     <form method="post" class="flour-create-form">
-      <label>Flour name<input name="name" required placeholder="High Mountain"></label>
+      <label>Mill<input name="mill" required placeholder="Central Milling"></label>
+      <label>Flour<input name="name" required placeholder="High Mountain"></label>
       <label>Protein <span>%</span><input name="protein_pct" type="number" min="0" max="100" step="0.01" required placeholder="13.50"></label>
       <label>Ash <span>%</span><input name="ash_pct" type="number" min="0" max="100" step="0.01" required placeholder="0.65"></label>
       <button class="button primary" type="submit">Add Flour</button>
@@ -23,6 +25,7 @@
         {% for flour in flours %}
           <article class="flour-library-row">
             <form method="post" action="{{ url_for('main.flour_edit', flour_id=flour.id) }}" class="flour-edit-form">
+              <label>Mill<input name="mill" value="{{ flour.mill }}" required placeholder="Mill name"></label>
               <label>Flour<input name="name" value="{{ flour.name }}" required></label>
               <label>Protein %<input name="protein_pct" type="number" min="0" max="100" step="0.01" value="{{ '%g'|format(flour.protein_pct) }}" required></label>
               <label>Ash %<input name="ash_pct" type="number" min="0" max="100" step="0.01" value="{{ '%g'|format(flour.ash_pct) }}" required></label>

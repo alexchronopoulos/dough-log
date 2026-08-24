@@ -1,0 +1,239 @@
+{% extends "base.html" %}
+{% macro blend_position(prefix, label) %}
+  <div class="blend-position-card">
+    <span class="blend-position-number">{{ label }}</span>
+    <label>Mill<select name="{{ prefix }}_mill" data-mill-select data-flour-target="{{ prefix }}_id" required>{% for mill in mills %}<option value="{{ mill.value }}" {% if form[prefix ~ '_mill'] == mill.value %}selected{% endif %}>{{ mill.label }}</option>{% endfor %}</select></label>
+    <label>Flour<select id="{{ prefix }}_id" name="{{ prefix }}_id" data-flour-select required>{% for flour in flours %}<option value="{{ flour.id }}" data-mill="{{ flour.mill_key }}" {% if form[prefix ~ '_id'] == flour.id|string %}selected{% endif %}>{{ flour.name }} · {{ '%.2f'|format(flour.protein_pct) }}% protein · {{ '%.2f'|format(flour.ash_pct) }}% ash</option>{% endfor %}</select></label>
+  </div>
+{% endmacro %}
+{% block title %}Flour Blend Calculator{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <h1>Flour Blend Calculator</h1>
+  <a class="button" href="{{ url_for('main.flours') }}">Back to Flour Library</a>
+</section>
+
+{% if flours|length < 4 %}
+  <section class="wide-card">
+    <div class="empty-state compact"><p>Add at least four flours to the Flour Library before calculating a blend.</p></div>
+  </section>
+{% else %}
+  <form class="blend-calculator" method="post">
+    <section class="wide-card blend-input-card">
+      {% if error %}<div class="warning-panel blend-error">{{ error }}</div>{% endif %}
+      <div class="blend-input-section blend-target-section">
+        <div class="section-heading"><h2>Desired Flour</h2></div>
+        <div class="field-grid blend-target-grid">
+          <label>Overall protein <span>%</span><input name="target_protein_pct" type="number" min="0" max="100" step="0.001" value="{{ form.target_protein_pct }}" required></label>
+          <label>Overall ash <span>%</span><input name="target_ash_pct" type="number" min="0" max="100" step="0.001" value="{{ form.target_ash_pct }}" required></label>
+          <label>Minimum each flour <span>%</span><input name="minimum_flour_pct" type="number" min="0" max="25" step="1" value="{{ form.minimum_flour_pct }}" required></label>
+        </div>
+      </div>
+
+      <div class="section-heading"><h2>Choose Four Flours</h2></div>
+      <div class="four-flour-grid">
+        {{ blend_position('flour_1', '01') }}
+        {{ blend_position('flour_2', '02') }}
+        {{ blend_position('flour_3', '03') }}
+        {{ blend_position('flour_4', '04') }}
+      </div>
+
+      <div class="blend-actions"><button class="button primary large" type="submit">Calculate Blend</button></div>
+    </section>
+  </form>
+{% endif %}
+
+{% if result %}
+  <section class="wide-card blend-result-card" data-blend-editor data-minimum="{{ result.minimum_flour_pct }}" data-target-protein="{{ result.target_protein_pct }}" data-target-ash="{{ result.target_ash_pct }}">
+    <div class="section-heading">
+      <div><p class="eyebrow" data-blend-status>{% if result.is_exact %}Exact Target{% else %}Closest Available Blend{% endif %}</p><h2>Calculated Four-Flour Blend</h2></div>
+      <button class="button small" type="button" data-reset-blend>Reset Calculated Blend</button>
+    </div>
+    {% if not result.is_exact %}
+      <div class="warning-panel">The requested protein and ash combination cannot be matched exactly with whole-number flour shares while keeping every flour at or above {{ '%.0f'|format(result.minimum_flour_pct) }}%. The closest available blend is shown.</div>
+    {% endif %}
+
+    <div class="blend-metrics">
+      <article><span>Protein</span><strong><output data-live-protein>{{ '%.3f'|format(result.achieved_protein_pct) }}</output>%</strong><small>Target {{ '%.3f'|format(result.target_protein_pct) }}% · <output data-protein-delta>{{ '%+.3f'|format(result.protein_delta) }}</output></small></article>
+      <article><span>Ash</span><strong><output data-live-ash>{{ '%.3f'|format(result.achieved_ash_pct) }}</output>%</strong><small>Target {{ '%.3f'|format(result.target_ash_pct) }}% · <output data-ash-delta>{{ '%+.3f'|format(result.ash_delta) }}</output></small></article>
+      <article><span>Minimum Each Flour</span><strong>{{ '%.0f'|format(result.minimum_flour_pct) }}%</strong><small>Applied to all four flours</small></article>
+      <article><span>Total Blend</span><strong><output data-live-total>{{ '%.0f'|format(result.rows|sum(attribute='blend_pct')) }}</output>%</strong><small>Complete flour blend</small></article>
+    </div>
+
+    <div class="four-blend-bar" aria-label="Calculated flour blend">
+      {% for row in result.rows %}<span class="blend-segment-{{ loop.index }}" data-blend-segment style="width: {{ row.blend_pct }}%" title="{{ row.name }} · {{ '%.0f'|format(row.blend_pct) }}%"></span>{% endfor %}
+    </div>
+
+    <div class="four-blend-results">
+      {% for row in result.rows %}
+        <article class="four-blend-result blend-result-{{ loop.index }}" data-blend-row data-protein="{{ row.protein_pct }}" data-ash="{{ row.ash_pct }}">
+          <span>{{ row.mill or 'Unspecified mill' }}</span>
+          <h3>{{ row.name }}</h3>
+          <strong><output data-blend-output>{{ '%.0f'|format(row.blend_pct) }}</output>%</strong>
+          <label class="blend-slider-label"><span data-slider-label>Adjust flour share</span><input class="blend-slider" type="range" min="{{ result.minimum_flour_pct }}" max="{{ 100 - (result.minimum_flour_pct * 3) }}" step="1" value="{{ row.blend_pct }}" aria-label="Adjust {{ row.name }} percentage" data-blend-slider></label>
+          <label class="blend-lock-toggle"><input type="checkbox" aria-label="Lock {{ row.name }} percentage" data-blend-lock><span><span data-lock-action>Lock at</span> <output data-lock-output>{{ '%.0f'|format(row.blend_pct) }}</output>%</span></label>
+        </article>
+      {% endfor %}
+    </div>
+
+    <div class="blend-overall-table">
+      <div class="section-heading"><h3>Flour Distribution</h3><span>100% total flour</span></div>
+      <div class="table-wrap">
+        <table class="formula-table">
+          <thead><tr><th>Mill</th><th>Flour</th><th>Blend</th><th>Protein</th><th>Ash</th></tr></thead>
+          <tbody>
+            {% for row in result.rows %}<tr><td>{{ row.mill or 'Unspecified' }}</td><td>{{ row.name }}</td><td><strong><output data-table-blend>{{ '%.0f'|format(row.blend_pct) }}</output>%</strong></td><td>{{ '%.2f'|format(row.protein_pct) }}%</td><td>{{ '%.2f'|format(row.ash_pct) }}%</td></tr>{% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+(() => {
+  "use strict";
+  document.querySelectorAll("[data-mill-select]").forEach((millSelect) => {
+    const flourSelect = document.getElementById(millSelect.dataset.flourTarget);
+    if (!flourSelect) return;
+    const filterFlours = () => {
+      const selectedMill = millSelect.value;
+      const options = [...flourSelect.options];
+      options.forEach((option) => {
+        const matches = option.dataset.mill === selectedMill;
+        option.hidden = !matches;
+        option.disabled = !matches;
+      });
+      if (flourSelect.selectedOptions[0]?.disabled) {
+        const firstMatch = options.find((option) => !option.disabled);
+        if (firstMatch) flourSelect.value = firstMatch.value;
+      }
+    };
+    millSelect.addEventListener("change", filterFlours);
+    filterFlours();
+  });
+
+  const editor = document.querySelector("[data-blend-editor]");
+  if (!editor) return;
+  const rows = [...editor.querySelectorAll("[data-blend-row]")];
+  const sliders = rows.map((row) => row.querySelector("[data-blend-slider]"));
+  const sliderLabels = rows.map((row) => row.querySelector("[data-slider-label]"));
+  const lockToggles = rows.map((row) => row.querySelector("[data-blend-lock]"));
+  const lockActions = rows.map((row) => row.querySelector("[data-lock-action]"));
+  const lockOutputs = rows.map((row) => row.querySelector("[data-lock-output]"));
+  const outputs = rows.map((row) => row.querySelector("[data-blend-output]"));
+  const tableOutputs = [...editor.querySelectorAll("[data-table-blend]")];
+  const segments = [...editor.querySelectorAll("[data-blend-segment]")];
+  const proteins = rows.map((row) => Number(row.dataset.protein));
+  const ashes = rows.map((row) => Number(row.dataset.ash));
+  const minimum = Number(editor.dataset.minimum);
+  const targetProtein = Number(editor.dataset.targetProtein);
+  const targetAsh = Number(editor.dataset.targetAsh);
+  const initialShares = sliders.map((slider) => Number(slider.value));
+  const initialStatus = editor.querySelector("[data-blend-status]").textContent;
+  let shares = [...initialShares];
+  let locked = lockToggles.map(() => false);
+  let manuallyAdjusted = false;
+
+  const signed = (value) => `${value >= 0 ? "+" : ""}${value.toFixed(3)}`;
+  const updateSliderConstraints = () => {
+    const unlockedIndexes = shares.map((_share, index) => index).filter((index) => !locked[index]);
+    const lockedTotal = shares.reduce((total, share, index) => total + (locked[index] ? share : 0), 0);
+    rows.forEach((row, index) => {
+      const isRequiredBalance = !locked[index] && unlockedIndexes.length === 1;
+      const maximum = Math.max(minimum, 100 - lockedTotal - minimum * Math.max(0, unlockedIndexes.length - 1));
+      const fixedShare = locked[index] || isRequiredBalance;
+      sliders[index].min = fixedShare ? shares[index].toFixed(0) : minimum.toFixed(0);
+      sliders[index].max = fixedShare ? shares[index].toFixed(0) : maximum.toFixed(0);
+      sliders[index].disabled = locked[index] || isRequiredBalance;
+      sliderLabels[index].textContent = locked[index]
+        ? "Locked flour share"
+        : isRequiredBalance
+          ? "Required balance"
+          : "Adjust flour share";
+      lockActions[index].textContent = locked[index] ? "Locked at" : "Lock at";
+      row.classList.toggle("is-locked", locked[index]);
+      row.classList.toggle("is-required-balance", isRequiredBalance);
+    });
+  };
+
+  const renderBlend = () => {
+    updateSliderConstraints();
+    rows.forEach((row, index) => {
+      sliders[index].value = shares[index].toFixed(0);
+      outputs[index].value = shares[index].toFixed(0);
+      lockOutputs[index].value = shares[index].toFixed(0);
+      tableOutputs[index].value = shares[index].toFixed(0);
+      segments[index].style.width = `${shares[index]}%`;
+      segments[index].title = `${row.querySelector("h3").textContent.trim()} · ${shares[index].toFixed(0)}%`;
+    });
+    const protein = shares.reduce((total, share, index) => total + share * proteins[index] / 100, 0);
+    const ash = shares.reduce((total, share, index) => total + share * ashes[index] / 100, 0);
+    editor.querySelector("[data-live-protein]").value = protein.toFixed(3);
+    editor.querySelector("[data-live-ash]").value = ash.toFixed(3);
+    editor.querySelector("[data-protein-delta]").value = signed(protein - targetProtein);
+    editor.querySelector("[data-ash-delta]").value = signed(ash - targetAsh);
+    editor.querySelector("[data-live-total]").value = shares.reduce((total, share) => total + share, 0).toFixed(0);
+    editor.querySelector("[data-blend-status]").textContent = manuallyAdjusted ? "Manual Adjustment" : initialStatus;
+  };
+
+  const redistribute = (changedIndex, requestedShare) => {
+    if (locked[changedIndex]) return;
+    const otherIndexes = shares
+      .map((_share, index) => index)
+      .filter((index) => index !== changedIndex && !locked[index]);
+    const lockedTotal = shares.reduce((total, share, index) => total + (locked[index] ? share : 0), 0);
+    const availableShare = 100 - lockedTotal;
+    if (otherIndexes.length === 0) {
+      shares[changedIndex] = availableShare;
+      manuallyAdjusted = true;
+      renderBlend();
+      return;
+    }
+    const maximum = availableShare - minimum * otherIndexes.length;
+    const changedShare = Math.round(Math.min(maximum, Math.max(minimum, requestedShare)));
+    const distributable = Math.round(Math.max(0, availableShare - changedShare - minimum * otherIndexes.length));
+    const currentExcess = otherIndexes.map((index) => Math.max(0, shares[index] - minimum));
+    const totalExcess = currentExcess.reduce((total, value) => total + value, 0);
+
+    shares[changedIndex] = changedShare;
+    const rawAllocations = otherIndexes.map((_index, position) => {
+      const ratio = totalExcess > 0 ? currentExcess[position] / totalExcess : 1 / otherIndexes.length;
+      return distributable * ratio;
+    });
+    const wholeAllocations = rawAllocations.map((value) => Math.floor(value));
+    let unitsRemaining = distributable - wholeAllocations.reduce((total, value) => total + value, 0);
+    const remainderOrder = rawAllocations
+      .map((value, position) => ({ position, remainder: value - Math.floor(value) }))
+      .sort((left, right) => right.remainder - left.remainder || left.position - right.position);
+    for (let unit = 0; unit < unitsRemaining; unit += 1) {
+      wholeAllocations[remainderOrder[unit % remainderOrder.length].position] += 1;
+    }
+    otherIndexes.forEach((index, position) => {
+      shares[index] = minimum + wholeAllocations[position];
+    });
+    manuallyAdjusted = true;
+    renderBlend();
+  };
+
+  sliders.forEach((slider, index) => {
+    slider.addEventListener("input", () => redistribute(index, Number(slider.value)));
+  });
+  lockToggles.forEach((toggle, index) => {
+    toggle.addEventListener("change", () => {
+      locked[index] = toggle.checked;
+      renderBlend();
+    });
+  });
+  editor.querySelector("[data-reset-blend]").addEventListener("click", () => {
+    shares = [...initialShares];
+    locked = locked.map(() => false);
+    lockToggles.forEach((toggle) => { toggle.checked = false; });
+    manuallyAdjusted = false;
+    renderBlend();
+  });
+  renderBlend();
+})();
+</script>
+{% endblock %}
