@@ -4,6 +4,7 @@ import io
 import json
 import secrets
 import sqlite3
+from datetime import timedelta
 
 import pytest
 from PIL import Image
@@ -111,11 +112,9 @@ def create_log(client, template_id, **overrides):
     return int(response.headers["Location"].rstrip("/").split("/")[-1])
 
 
-def test_basic_auth_protects_app_but_not_health_check(tmp_path):
+def test_login_session_remembers_credentials_for_30_days(tmp_path):
     auth_username = f"test-user-{secrets.token_hex(4)}"
     auth_password = secrets.token_urlsafe(32)
-    invalid_username = f"invalid-user-{secrets.token_hex(4)}"
-    invalid_password = secrets.token_urlsafe(32)
     app = create_app(
         {
             "TESTING": True,
@@ -124,24 +123,125 @@ def test_basic_auth_protects_app_but_not_health_check(tmp_path):
             "UPLOAD_FOLDER": str(tmp_path / "uploads"),
             "BASIC_AUTH_USERNAME": auth_username,
             "BASIC_AUTH_PASSWORD": auth_password,
+            "SESSION_COOKIE_SECURE": False,
         }
     )
     client = app.test_client()
 
     unauthorized = client.get("/")
-    assert unauthorized.status_code == 401
-    assert unauthorized.headers["WWW-Authenticate"] == (
-        'Basic realm="Pizzeria Mari Dough Log", charset="UTF-8"'
-    )
-    assert unauthorized.headers["Cache-Control"] == "no-store"
-    assert client.get("/", auth=(auth_username, invalid_password)).status_code == 401
-    assert client.get("/", auth=(invalid_username, auth_password)).status_code == 401
+    assert unauthorized.status_code == 302
+    assert unauthorized.headers["Location"].startswith("/login?next=")
 
-    authorized = client.get("/", auth=(auth_username, auth_password))
+    login_page = client.get(unauthorized.headers["Location"])
+    assert login_page.status_code == 200
+    assert login_page.headers["Cache-Control"] == "no-store"
+    assert b"Sign In for 30 Days" in login_page.data
+    assert b'name="username" autocomplete="username"' in login_page.data
+    assert b'name="password" type="password" autocomplete="current-password"' in login_page.data
+    assert b"New Log" not in login_page.data
+
+    rejected = client.post(
+        "/login",
+        data={
+            "username": auth_username,
+            "password": secrets.token_urlsafe(32),
+            "next": "/",
+        },
+    )
+    assert rejected.status_code == 401
+    assert "WWW-Authenticate" not in rejected.headers
+    assert b"The username or password is incorrect." in rejected.data
+
+    signed_in = client.post(
+        "/login",
+        data={"username": auth_username, "password": auth_password, "next": "/"},
+    )
+    assert signed_in.status_code == 302
+    assert signed_in.headers["Location"] == "/"
+    session_cookie = signed_in.headers["Set-Cookie"]
+    assert "pizzeria_mari_dough_log_session=" in session_cookie
+    assert "HttpOnly" in session_cookie
+    assert "SameSite=Lax" in session_cookie
+    assert auth_username not in session_cookie
+    assert auth_password not in session_cookie
+    assert app.permanent_session_lifetime == timedelta(days=30)
+    assert app.config["SESSION_REFRESH_EACH_REQUEST"] is False
+
+    authorized = client.get("/")
     assert authorized.status_code == 200
     assert b"Service Days" in authorized.data
-    assert client.get("/static/style.css").status_code == 401
+    assert b"Log Out" in authorized.data
+    assert "Set-Cookie" not in authorized.headers
+
+    logged_out = client.post("/logout")
+    assert logged_out.status_code == 302
+    assert client.get("/").status_code == 302
+
+    basic_compatible = client.get("/", auth=(auth_username, auth_password))
+    assert basic_compatible.status_code == 200
+    assert "Set-Cookie" in basic_compatible.headers
+
+    assert client.get("/static/style.css").status_code == 200
     assert client.get("/health").get_json() == {"status": "ok"}
+
+
+def test_login_cookie_can_be_marked_secure_and_rejects_external_redirects(tmp_path):
+    auth_username = f"test-user-{secrets.token_hex(4)}"
+    auth_password = secrets.token_urlsafe(32)
+    app = create_app(
+        {
+            "TESTING": True,
+            "SECRET_KEY": secrets.token_hex(32),
+            "DATABASE": str(tmp_path / "secure-auth.sqlite3"),
+            "UPLOAD_FOLDER": str(tmp_path / "uploads"),
+            "BASIC_AUTH_USERNAME": auth_username,
+            "BASIC_AUTH_PASSWORD": auth_password,
+            "SESSION_COOKIE_SECURE": True,
+        }
+    )
+    client = app.test_client()
+    response = client.post(
+        "/login",
+        base_url="https://doughlog.pizzeriamari.com",
+        data={
+            "username": auth_username,
+            "password": auth_password,
+            "next": "https://example.com/not-allowed",
+        },
+    )
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/"
+    assert "Secure" in response.headers["Set-Cookie"]
+
+
+def test_changing_credentials_invalidates_an_existing_login_session(tmp_path):
+    auth_username = f"test-user-{secrets.token_hex(4)}"
+    auth_password = secrets.token_urlsafe(32)
+    secret_key = secrets.token_hex(32)
+    config = {
+        "TESTING": True,
+        "SECRET_KEY": secret_key,
+        "DATABASE": str(tmp_path / "rotated-auth.sqlite3"),
+        "UPLOAD_FOLDER": str(tmp_path / "uploads"),
+        "BASIC_AUTH_USERNAME": auth_username,
+        "BASIC_AUTH_PASSWORD": auth_password,
+        "SESSION_COOKIE_SECURE": False,
+    }
+    original_app = create_app(config)
+    original_client = original_app.test_client()
+    original_client.post(
+        "/login",
+        data={"username": auth_username, "password": auth_password, "next": "/"},
+    )
+    saved_cookie = original_client.get_cookie("pizzeria_mari_dough_log_session")
+    assert saved_cookie is not None
+
+    rotated_app = create_app({**config, "BASIC_AUTH_PASSWORD": secrets.token_urlsafe(32)})
+    rotated_client = rotated_app.test_client()
+    rotated_client.set_cookie("pizzeria_mari_dough_log_session", saved_cookie.value)
+    response = rotated_client.get("/")
+    assert response.status_code == 302
+    assert response.headers["Location"].startswith("/login?next=")
 
 
 def test_basic_auth_rejects_incomplete_configuration(tmp_path):
@@ -153,6 +253,19 @@ def test_basic_auth_rejects_incomplete_configuration(tmp_path):
                 "UPLOAD_FOLDER": str(tmp_path / "uploads"),
                 "BASIC_AUTH_USERNAME": f"test-user-{secrets.token_hex(4)}",
                 "BASIC_AUTH_PASSWORD": "",
+            }
+        )
+
+
+def test_authentication_rejects_the_development_secret_key(tmp_path):
+    with pytest.raises(RuntimeError, match="Set SECRET_KEY"):
+        create_app(
+            {
+                "TESTING": True,
+                "DATABASE": str(tmp_path / "unsafe-secret.sqlite3"),
+                "UPLOAD_FOLDER": str(tmp_path / "uploads"),
+                "BASIC_AUTH_USERNAME": f"test-user-{secrets.token_hex(4)}",
+                "BASIC_AUTH_PASSWORD": secrets.token_urlsafe(32),
             }
         )
 

@@ -22,7 +22,7 @@ A private, Pi-ready dough calculator and service-day production journal. Each lo
 - Side-by-side comparison of any two service-day records, with changed values highlighted and a differences-only view
 - Multiple finished-pizza photos, including iPhone HEIC/HEIF support
 - History search/filtering, print layout, JSON record export, and a health-check endpoint
-- Optional app-level HTTP Basic Authentication for every page, record, photo, and static asset
+- Optional app-level sign-in with a signed 30-day browser session, plus Basic Auth compatibility for existing clients
 - Pizzeria Mari's Compagnon and Semplicita typography, cream horizontal logo, black icon favicon, and shared blue/cream/orange/green visual system
 - Responsive layouts for desktop, iPhone, iPad, and Android
 
@@ -51,14 +51,15 @@ These instructions assume the project lives at `/home/YOUR_USER/dough-log`.
    python3 -c 'import secrets; print(secrets.token_urlsafe(24))'
    ```
 
-2. Put the first generated value after `SECRET_KEY=` in `.env`. To enable authentication, set a username and put the second generated value after the password field:
+2. Put the first generated value after `SECRET_KEY=` in `.env`. To enable authentication, set a username and put the second generated value after the password field. If the site is served exclusively over HTTPS, also enable secure-only session cookies:
 
    ```dotenv
    BASIC_AUTH_USERNAME=alex
    BASIC_AUTH_PASSWORD=replace-with-the-generated-password
+   SESSION_COOKIE_SECURE=true
    ```
 
-   Both authentication values must be set together. Leaving both blank disables authentication for local development.
+   Both authentication values must be set together. Leaving both blank disables authentication for local development. Keep `SESSION_COOKIE_SECURE=false` when accessing the app directly over plain HTTP on the local network.
 
 3. Edit `deploy/dough-log.service`, replacing `YOUR_USER` in the `User`, `Group`, `WorkingDirectory`, and `EnvironmentFile` lines.
 
@@ -77,11 +78,11 @@ These instructions assume the project lives at `/home/YOUR_USER/dough-log`.
    curl http://127.0.0.1:5050/health
    ```
 
-The health endpoint intentionally remains available without authentication so the service and updater can verify that the app is running. All other routes, including uploaded photos and static assets, require authentication when enabled.
+The health endpoint intentionally remains available without authentication so the service and updater can verify that the app is running. The sign-in page and brand assets are also public so the login screen can render. All recipes, logs, photos, and other application data require authentication when enabled.
 
 The service uses two Gunicorn processes with SQLite WAL mode and a busy timeout, which is appropriate for the small number of devices expected to use this private app.
 
-## Enable authentication on an existing Pi installation
+## Enable the 30-day sign-in on an existing Pi installation
 
 Generate a password, then edit the existing `.env` file:
 
@@ -96,6 +97,7 @@ Add both values, using the generated password:
 ```dotenv
 BASIC_AUTH_USERNAME=alex
 BASIC_AUTH_PASSWORD=replace-with-the-generated-password
+SESSION_COOKIE_SECURE=true
 ```
 
 Restart the application so systemd reloads the environment file:
@@ -104,13 +106,17 @@ Restart the application so systemd reloads the environment file:
 sudo systemctl restart dough-log
 ```
 
-The next visit will display the browser's standard username/password prompt. To disable authentication again, leave both values blank and restart the service.
+The next visit will show the Pizzeria Mari sign-in page. A successful sign-in creates a signed, HttpOnly browser session that expires after 30 days and is not extended on every visit. The username and password themselves are not stored in the cookie. Signing out, clearing browser cookies, using a private window, changing the configured credentials, or changing `SECRET_KEY` requires another sign-in.
+
+Use `SESSION_COOKIE_SECURE=true` for HTTPS. If the app is only being opened directly over plain HTTP on the local network, use `SESSION_COOKIE_SECURE=false`; a browser will not send a secure-only cookie over HTTP.
+
+To disable authentication again, leave both authentication values blank and restart the service.
 
 ## Optional Nginx access
 
 `deploy/nginx-dough-log.conf` contains a reverse-proxy example for `doughlog.pizzeriamari.com`. Replace the hostname if needed, copy it to `/etc/nginx/sites-available/dough-log`, enable it, and obtain the certificate with Certbot as you did for the Service Dashboard.
 
-The application already supplies the Basic Authentication challenge, so Nginx does not need its own password configuration. Use HTTPS before exposing it publicly because Basic Authentication relies on TLS to protect the credentials in transit.
+Nginx does not need its own password configuration. Use HTTPS before exposing the app publicly so the sign-in credentials and session remain protected in transit, and set `SESSION_COOKIE_SECURE=true` once HTTPS is active.
 
 ## Backups
 

@@ -15,12 +15,17 @@
       <img src="{{ url_for('static', filename='assets/pm-horizontal-logo-cream.png') }}" alt="Pizzeria Mari">
       <span class="app-name">Dough Log</span>
     </a>
-    <nav aria-label="Primary navigation">
-      <a class="{% if request.endpoint == 'main.log_new' %}active{% endif %}" href="{{ url_for('main.log_new') }}">New Log</a>
-      <a class="{% if request.endpoint in ['main.history', 'main.log_detail', 'main.log_edit'] %}active{% endif %}" href="{{ url_for('main.history') }}">History</a>
-      <a class="{% if request.endpoint in ['main.templates_list', 'main.template_new', 'main.template_edit'] %}active{% endif %}" href="{{ url_for('main.templates_list') }}">Recipes</a>
-      <a class="{% if request.endpoint in ['main.flours', 'main.flour_blend', 'main.flour_edit', 'main.flour_delete'] %}active{% endif %}" href="{{ url_for('main.flours') }}">Flours</a>
-    </nav>
+    {% if request.endpoint != 'login' %}
+      <nav aria-label="Primary navigation">
+        <a class="{% if request.endpoint == 'main.log_new' %}active{% endif %}" href="{{ url_for('main.log_new') }}">New Log</a>
+        <a class="{% if request.endpoint in ['main.history', 'main.log_detail', 'main.log_edit'] %}active{% endif %}" href="{{ url_for('main.history') }}">History</a>
+        <a class="{% if request.endpoint in ['main.templates_list', 'main.template_new', 'main.template_edit'] %}active{% endif %}" href="{{ url_for('main.templates_list') }}">Recipes</a>
+        <a class="{% if request.endpoint in ['main.flours', 'main.flour_blend', 'main.flour_edit', 'main.flour_delete'] %}active{% endif %}" href="{{ url_for('main.flours') }}">Flours</a>
+        {% if config.BASIC_AUTH_USERNAME %}
+          <form action="{{ url_for('logout') }}" method="post"><button class="nav-logout" type="submit">Log Out</button></form>
+        {% endif %}
+      </nav>
+    {% endif %}
   </header>
 
   {% with messages = get_flashed_messages(with_categories=true) %}

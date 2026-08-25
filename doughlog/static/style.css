@@ -121,7 +121,8 @@ main { width: min(1480px, calc(100% - 48px)); margin: 0 auto; padding: 54px 0 64
   white-space: nowrap;
 }
 .site-header nav { display: flex; align-items: center; gap: 7px; }
-.site-header nav a {
+.site-header nav form { margin: 0; }
+.site-header nav a, .site-header nav button {
   min-height: 42px;
   display: inline-flex;
   align-items: center;
@@ -134,7 +135,8 @@ main { width: min(1480px, calc(100% - 48px)); margin: 0 auto; padding: 54px 0 64
   line-height: 1.2;
   text-decoration: none;
 }
-.site-header nav a:hover, .site-header nav a:focus-visible { border-color: rgba(227, 220, 181, .55); }
+.site-header nav button { appearance: none; cursor: pointer; }
+.site-header nav a:hover, .site-header nav a:focus-visible, .site-header nav button:hover, .site-header nav button:focus-visible { border-color: rgba(227, 220, 181, .55); }
 .site-header nav a.active { border-color: var(--orange); color: var(--blue-dark); background: var(--orange); }
 
 .flash-stack { position: fixed; z-index: 50; top: 108px; right: 24px; width: min(430px, calc(100% - 48px)); display: grid; gap: 9px; }
@@ -274,6 +276,13 @@ main { width: min(1480px, calc(100% - 48px)); margin: 0 auto; padding: 54px 0 64
 .empty-state.compact { padding: 22px; }
 
 .wide-card { padding: clamp(22px, 3vw, 38px); border: 2px solid var(--blue); border-radius: var(--radius); background: var(--paper); box-shadow: var(--shadow); }
+.login-shell { min-height: calc(100vh - 210px); display: grid; place-items: center; }
+.login-card { width: min(100%, 520px); }
+.login-card h1 { margin-bottom: 28px; }
+.login-fields { display: grid; gap: 17px; margin-bottom: 21px; }
+.login-fields label { display: grid; gap: 7px; color: var(--blue-dark); font-weight: 700; }
+.login-card .button { width: 100%; }
+.login-error { padding: 13px 15px; margin: -12px 0 18px; border: 2px solid var(--danger); border-left-width: 8px; border-radius: 9px; color: var(--danger); background: #fff4ef; font-weight: 700; }
 .flour-library-layout { display: grid; grid-template-columns: minmax(300px, 390px) minmax(0, 1fr); gap: 22px; align-items: start; }
 .flour-create-card { position: sticky; top: 118px; }
 .flour-create-form { display: grid; gap: 14px; }
@@ -594,8 +603,9 @@ input[type="file"] { padding: 8px; }
   .wordmark { width: 100%; justify-content: space-between; gap: 12px; }
   .wordmark img { width: min(230px, 68vw); }
   .app-name { margin-left: auto; padding-left: 12px; }
-  .site-header nav { width: 100%; display: grid; grid-template-columns: repeat(4, 1fr); }
-  .site-header nav a { min-height: 42px; padding-inline: 7px; font-size: .82rem; }
+  .site-header nav { width: 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(64px, 1fr)); }
+  .site-header nav form { display: contents; }
+  .site-header nav a, .site-header nav button { min-height: 42px; padding-inline: 7px; font-size: .82rem; }
   .flash-stack { top: 16px; right: 12px; width: calc(100% - 24px); }
   .hero { padding: 31px 23px; border-radius: 14px; }
   .hero p:not(.eyebrow) { font-size: 1rem; }
