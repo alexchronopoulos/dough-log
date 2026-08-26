@@ -18,10 +18,12 @@
           <a class="button small" href="{{ url_for('main.template_edit', template_id=template.id) }}">Edit</a>
           {% if not template.is_archived and not template.is_default %}
             <form method="post" action="{{ url_for('main.template_default', template_id=template.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button class="text-button" type="submit">Make Default</button>
             </form>
           {% endif %}
           <form method="post" action="{{ url_for('main.template_archive', template_id=template.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="text-button" type="submit">{% if template.is_archived %}Restore{% else %}Archive{% endif %}</button>
           </form>
         </div>

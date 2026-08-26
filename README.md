@@ -23,6 +23,9 @@ A private, Pi-ready dough calculator and service-day production journal. Each lo
 - Multiple finished-pizza photos, including iPhone HEIC/HEIF support
 - History search/filtering, print layout, JSON record export, and a health-check endpoint
 - Optional app-level sign-in with a signed 30-day browser session, plus Basic Auth compatibility for existing clients
+- Persistent brute-force protection for both sign-in methods: per-client and application-wide failure limits with a timed cooldown
+- CSRF tokens on sign-in, logout, and every authenticated form that changes application data
+- Login audit warnings without submitted credentials or raw client addresses, plus CSP, HSTS, anti-clickjacking, MIME-sniffing, referrer, and browser-permission headers
 - Pizzeria Mari's Compagnon and Semplicita typography, cream horizontal logo, black icon favicon, and shared blue/cream/orange/green visual system
 - Responsive layouts for desktop, iPhone, iPad, and Android
 
@@ -57,6 +60,7 @@ These instructions assume the project lives at `/home/YOUR_USER/dough-log`.
    BASIC_AUTH_USERNAME=alex
    BASIC_AUTH_PASSWORD=replace-with-the-generated-password
    SESSION_COOKIE_SECURE=true
+   TRUST_PROXY_HEADERS=true
    ```
 
    Both authentication values must be set together. Leaving both blank disables authentication for local development. Keep `SESSION_COOKIE_SECURE=false` when accessing the app directly over plain HTTP on the local network.
@@ -109,6 +113,22 @@ sudo systemctl restart dough-log
 The next visit will show the Pizzeria Mari sign-in page. A successful sign-in creates a signed, HttpOnly browser session that expires after 30 days and is not extended on every visit. The username and password themselves are not stored in the cookie. Signing out, clearing browser cookies, using a private window, changing the configured credentials, or changing `SECRET_KEY` requires another sign-in.
 
 Use `SESSION_COOKIE_SECURE=true` for HTTPS. If the app is only being opened directly over plain HTTP on the local network, use `SESSION_COOKIE_SECURE=false`; a browser will not send a secure-only cookie over HTTP.
+
+The shipped Pi deployment runs behind one Nginx reverse proxy, so `TRUST_PROXY_HEADERS=true` lets the limiter use the real client address supplied by that trusted proxy. Set it to `false` if the Flask app is exposed directly without Nginx. Do not enable it behind an unknown number of proxies.
+
+By default, five failed attempts from one client or twenty failures across the application within fifteen minutes temporarily pause sign-ins until the rolling window clears. The limits apply across Gunicorn workers and survive restarts because failures are stored in SQLite. Successful sign-in clears that client's failures. The values can be adjusted in `.env` if needed:
+
+```dotenv
+AUTH_FAILURE_WINDOW_MINUTES=15
+AUTH_MAX_FAILURES_PER_IP=5
+AUTH_MAX_FAILURES_TOTAL=20
+```
+
+Rejected credential attempts are visible in the service journal without logging the submitted username, password, or raw IP address:
+
+```bash
+sudo journalctl -u dough-log.service
+```
 
 To disable authentication again, leave both authentication values blank and restart the service.
 

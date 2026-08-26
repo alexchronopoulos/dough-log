@@ -2,15 +2,23 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import secrets
 import sqlite3
 from datetime import timedelta
+from pathlib import Path
 
 import pytest
 from PIL import Image
 
 from doughlog import create_app
 from doughlog.db import get_db
+
+
+def csrf_from(response) -> str:
+    match = re.search(rb'name="csrf_token" value="([^"]+)"', response.data)
+    assert match is not None
+    return match.group(1).decode()
 
 
 def formula_fields(**overrides):
@@ -139,6 +147,7 @@ def test_login_session_remembers_credentials_for_30_days(tmp_path):
     assert b'name="username" autocomplete="username"' in login_page.data
     assert b'name="password" type="password" autocomplete="current-password"' in login_page.data
     assert b"New Log" not in login_page.data
+    login_csrf = csrf_from(login_page)
 
     rejected = client.post(
         "/login",
@@ -146,6 +155,7 @@ def test_login_session_remembers_credentials_for_30_days(tmp_path):
             "username": auth_username,
             "password": secrets.token_urlsafe(32),
             "next": "/",
+            "csrf_token": login_csrf,
         },
     )
     assert rejected.status_code == 401
@@ -154,7 +164,12 @@ def test_login_session_remembers_credentials_for_30_days(tmp_path):
 
     signed_in = client.post(
         "/login",
-        data={"username": auth_username, "password": auth_password, "next": "/"},
+        data={
+            "username": auth_username,
+            "password": auth_password,
+            "next": "/",
+            "csrf_token": login_csrf,
+        },
     )
     assert signed_in.status_code == 302
     assert signed_in.headers["Location"] == "/"
@@ -173,7 +188,9 @@ def test_login_session_remembers_credentials_for_30_days(tmp_path):
     assert b"Log Out" in authorized.data
     assert "Set-Cookie" not in authorized.headers
 
-    logged_out = client.post("/logout")
+    with client.session_transaction() as saved_session:
+        logout_csrf = saved_session["csrf_token"]
+    logged_out = client.post("/logout", data={"csrf_token": logout_csrf})
     assert logged_out.status_code == 302
     assert client.get("/").status_code == 302
 
@@ -200,6 +217,9 @@ def test_login_cookie_can_be_marked_secure_and_rejects_external_redirects(tmp_pa
         }
     )
     client = app.test_client()
+    login_page = client.get(
+        "/login", base_url="https://doughlog.pizzeriamari.com"
+    )
     response = client.post(
         "/login",
         base_url="https://doughlog.pizzeriamari.com",
@@ -207,6 +227,7 @@ def test_login_cookie_can_be_marked_secure_and_rejects_external_redirects(tmp_pa
             "username": auth_username,
             "password": auth_password,
             "next": "https://example.com/not-allowed",
+            "csrf_token": csrf_from(login_page),
         },
     )
     assert response.status_code == 302
@@ -229,9 +250,15 @@ def test_changing_credentials_invalidates_an_existing_login_session(tmp_path):
     }
     original_app = create_app(config)
     original_client = original_app.test_client()
+    login_page = original_client.get("/login")
     original_client.post(
         "/login",
-        data={"username": auth_username, "password": auth_password, "next": "/"},
+        data={
+            "username": auth_username,
+            "password": auth_password,
+            "next": "/",
+            "csrf_token": csrf_from(login_page),
+        },
     )
     saved_cookie = original_client.get_cookie("pizzeria_mari_dough_log_session")
     assert saved_cookie is not None
@@ -242,6 +269,258 @@ def test_changing_credentials_invalidates_an_existing_login_session(tmp_path):
     response = rotated_client.get("/")
     assert response.status_code == 302
     assert response.headers["Location"].startswith("/login?next=")
+
+
+def test_login_throttle_persists_across_app_workers_and_recovers(tmp_path):
+    auth_username = f"test-user-{secrets.token_hex(4)}"
+    auth_password = secrets.token_urlsafe(32)
+    config = {
+        "TESTING": True,
+        "SECRET_KEY": secrets.token_hex(32),
+        "DATABASE": str(tmp_path / "throttled-auth.sqlite3"),
+        "UPLOAD_FOLDER": str(tmp_path / "uploads"),
+        "BASIC_AUTH_USERNAME": auth_username,
+        "BASIC_AUTH_PASSWORD": auth_password,
+        "SESSION_COOKIE_SECURE": False,
+        "TRUST_PROXY_HEADERS": False,
+        "AUTH_FAILURE_WINDOW_MINUTES": 15,
+        "AUTH_MAX_FAILURES_PER_IP": 2,
+        "AUTH_MAX_FAILURES_TOTAL": 10,
+    }
+    first_app = create_app(config)
+    first_client = first_app.test_client()
+    login_page = first_client.get("/login")
+    csrf_token = csrf_from(login_page)
+    for username, password in (
+        (f"unknown-{secrets.token_hex(4)}", secrets.token_urlsafe(32)),
+        (auth_username, secrets.token_urlsafe(32)),
+    ):
+        response = first_client.post(
+            "/login",
+            data={
+                "username": username,
+                "password": password,
+                "next": "/",
+                "csrf_token": csrf_token,
+            },
+        )
+        assert response.status_code == 401
+        assert b"The username or password is incorrect." in response.data
+
+    with first_app.app_context():
+        failures = get_db().execute(
+            "SELECT client_key, attempted_at FROM login_failures"
+        ).fetchall()
+        assert len(failures) == 2
+        assert all(row["client_key"] != "127.0.0.1" for row in failures)
+
+    second_app = create_app(config)
+    second_client = second_app.test_client()
+    second_login_page = second_client.get("/login")
+    blocked = second_client.post(
+        "/login",
+        data={
+            "username": auth_username,
+            "password": auth_password,
+            "next": "/",
+            "csrf_token": csrf_from(second_login_page),
+        },
+    )
+    assert blocked.status_code == 429
+    assert 1 <= int(blocked.headers["Retry-After"]) <= 900
+    assert b"Sign-in is temporarily unavailable." in blocked.data
+
+    with second_app.app_context():
+        get_db().execute("UPDATE login_failures SET attempted_at = attempted_at - 901")
+        get_db().commit()
+
+    recovered = second_client.post(
+        "/login",
+        data={
+            "username": auth_username,
+            "password": auth_password,
+            "next": "/",
+            "csrf_token": csrf_from(blocked),
+        },
+    )
+    assert recovered.status_code == 302
+    with second_app.app_context():
+        assert get_db().execute(
+            "SELECT COUNT(*) AS count FROM login_failures"
+        ).fetchone()["count"] == 0
+
+
+def test_basic_auth_attempts_are_throttled_too(tmp_path):
+    auth_username = f"test-user-{secrets.token_hex(4)}"
+    auth_password = secrets.token_urlsafe(32)
+    app = create_app(
+        {
+            "TESTING": True,
+            "SECRET_KEY": secrets.token_hex(32),
+            "DATABASE": str(tmp_path / "basic-throttle.sqlite3"),
+            "UPLOAD_FOLDER": str(tmp_path / "uploads"),
+            "BASIC_AUTH_USERNAME": auth_username,
+            "BASIC_AUTH_PASSWORD": auth_password,
+            "SESSION_COOKIE_SECURE": False,
+            "TRUST_PROXY_HEADERS": False,
+            "AUTH_MAX_FAILURES_PER_IP": 2,
+            "AUTH_MAX_FAILURES_TOTAL": 10,
+        }
+    )
+    client = app.test_client()
+    for _attempt in range(2):
+        response = client.get(
+            "/", auth=(auth_username, secrets.token_urlsafe(32))
+        )
+        assert response.status_code == 302
+
+    blocked = client.get("/", auth=(auth_username, auth_password))
+    assert blocked.status_code == 429
+    assert "Retry-After" in blocked.headers
+    assert "unsafe-inline" not in blocked.headers["Content-Security-Policy"]
+
+
+def test_total_login_limit_uses_nginx_forwarded_client_addresses(tmp_path):
+    auth_username = f"test-user-{secrets.token_hex(4)}"
+    auth_password = secrets.token_urlsafe(32)
+    app = create_app(
+        {
+            "TESTING": True,
+            "SECRET_KEY": secrets.token_hex(32),
+            "DATABASE": str(tmp_path / "forwarded-throttle.sqlite3"),
+            "UPLOAD_FOLDER": str(tmp_path / "uploads"),
+            "BASIC_AUTH_USERNAME": auth_username,
+            "BASIC_AUTH_PASSWORD": auth_password,
+            "SESSION_COOKIE_SECURE": False,
+            "TRUST_PROXY_HEADERS": True,
+            "AUTH_MAX_FAILURES_PER_IP": 2,
+            "AUTH_MAX_FAILURES_TOTAL": 2,
+        }
+    )
+    client = app.test_client()
+    login_page = client.get("/login")
+    token = csrf_from(login_page)
+    for address in ("203.0.113.10", "203.0.113.11"):
+        response = client.post(
+            "/login",
+            headers={"X-Forwarded-For": address, "X-Forwarded-Proto": "https"},
+            data={
+                "username": auth_username,
+                "password": secrets.token_urlsafe(32),
+                "next": "/",
+                "csrf_token": token,
+            },
+        )
+        assert response.status_code == 401
+
+    blocked = client.post(
+        "/login",
+        headers={"X-Forwarded-For": "203.0.113.12", "X-Forwarded-Proto": "https"},
+        data={
+            "username": auth_username,
+            "password": auth_password,
+            "next": "/",
+            "csrf_token": token,
+        },
+    )
+    assert blocked.status_code == 429
+    with app.app_context():
+        keys = {
+            row["client_key"]
+            for row in get_db().execute("SELECT client_key FROM login_failures")
+        }
+        assert len(keys) == 2
+
+
+def test_login_csrf_and_security_headers(tmp_path):
+    auth_username = f"test-user-{secrets.token_hex(4)}"
+    auth_password = secrets.token_urlsafe(32)
+    app = create_app(
+        {
+            "TESTING": True,
+            "SECRET_KEY": secrets.token_hex(32),
+            "DATABASE": str(tmp_path / "csrf-auth.sqlite3"),
+            "UPLOAD_FOLDER": str(tmp_path / "uploads"),
+            "BASIC_AUTH_USERNAME": auth_username,
+            "BASIC_AUTH_PASSWORD": auth_password,
+            "SESSION_COOKIE_SECURE": True,
+            "TRUST_PROXY_HEADERS": True,
+        }
+    )
+    client = app.test_client()
+    base_url = "https://doughlog.pizzeriamari.com"
+    login_page = client.get("/login", base_url=base_url)
+    expected_headers = {
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+        "Referrer-Policy": "no-referrer",
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    }
+    for header, value in expected_headers.items():
+        assert login_page.headers[header] == value
+    assert "unsafe-inline" not in login_page.headers["Content-Security-Policy"]
+    assert "frame-ancestors 'none'" in login_page.headers["Content-Security-Policy"]
+    assert login_page.headers["Cache-Control"] == "no-store"
+
+    missing_csrf = client.post(
+        "/login",
+        base_url=base_url,
+        data={"username": auth_username, "password": auth_password, "next": "/"},
+    )
+    assert missing_csrf.status_code == 400
+    assert b"The sign-in form expired." in missing_csrf.data
+
+    signed_in = client.post(
+        "/login",
+        base_url=base_url,
+        data={
+            "username": auth_username,
+            "password": auth_password,
+            "next": "/",
+            "csrf_token": csrf_from(login_page),
+        },
+    )
+    assert signed_in.status_code == 302
+    assert all(
+        flag in signed_in.headers["Set-Cookie"]
+        for flag in ("Secure", "HttpOnly", "SameSite=Lax")
+    )
+
+    rejected_change = client.post(
+        "/flours",
+        base_url=base_url,
+        data={"mill": "Example", "name": "Example Flour"},
+    )
+    assert rejected_change.status_code == 400
+
+    home = client.get("/", base_url=base_url)
+    logout_csrf = csrf_from(home)
+    assert client.post("/logout", base_url=base_url).status_code == 400
+    assert client.post(
+        "/logout",
+        base_url=base_url,
+        data={"csrf_token": logout_csrf},
+    ).status_code == 302
+
+
+def test_every_post_form_includes_a_csrf_token():
+    template_directory = Path(__file__).parents[1] / "doughlog" / "templates"
+    post_forms = []
+    for template in template_directory.glob("*.html"):
+        contents = template.read_text(encoding="utf-8")
+        post_forms.extend(
+            (template.name, form)
+            for form in re.findall(
+                r'<form\b[^>]*method="post"[^>]*>.*?</form>',
+                contents,
+                flags=re.DOTALL,
+            )
+        )
+    assert len(post_forms) >= 12
+    for template_name, form in post_forms:
+        assert 'name="csrf_token"' in form, template_name
 
 
 def test_basic_auth_rejects_incomplete_configuration(tmp_path):

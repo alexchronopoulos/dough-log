@@ -54,3 +54,15 @@ CREATE TABLE IF NOT EXISTS photos (
     created_at TEXT NOT NULL,
     FOREIGN KEY (dough_log_id) REFERENCES dough_logs(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS login_failures (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_key TEXT NOT NULL,
+    attempted_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS login_failures_client_time_idx
+ON login_failures(client_key, attempted_at);
+
+CREATE INDEX IF NOT EXISTS login_failures_time_idx
+ON login_failures(attempted_at);

@@ -4,12 +4,13 @@
 <section class="login-shell">
   <form class="wide-card login-card" method="post">
     <input type="hidden" name="next" value="{{ destination }}">
+    <input type="hidden" name="csrf_token" value="{{ login_csrf_token }}">
     <p class="eyebrow">Private Utility</p>
     <h1>Sign In</h1>
     {% if error %}<div class="login-error" role="alert">{{ error }}</div>{% endif %}
     <div class="login-fields">
-      <label>Username<input name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus></label>
-      <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+      <label>Username<input name="username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="256" required autofocus></label>
+      <label>Password<input name="password" type="password" autocomplete="current-password" maxlength="1024" required></label>
     </div>
     <button class="button primary large" type="submit">Sign In for 30 Days</button>
   </form>

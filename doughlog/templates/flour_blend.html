@@ -19,6 +19,7 @@
   </section>
 {% else %}
   <form class="blend-calculator" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <section class="wide-card blend-input-card">
       {% if error %}<div class="warning-panel blend-error">{{ error }}</div>{% endif %}
       <div class="blend-input-section blend-target-section">

@@ -7,6 +7,7 @@
 </section>
 
 <form method="post" id="recipe-form" class="editor-layout">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div class="editor-main">
     {% if form_kind == 'template' %}
       <section class="form-section identity-section">

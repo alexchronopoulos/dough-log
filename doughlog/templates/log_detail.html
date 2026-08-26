@@ -99,11 +99,12 @@
   {% if log.photos %}
     <div class="photo-grid">
       {% for photo in log.photos %}
-        <figure><a href="{{ url_for('main.photo_file', filename=photo.filename) }}" target="_blank" rel="noopener"><img src="{{ url_for('main.photo_file', filename=photo.filename) }}" alt="{{ photo.caption or 'Finished pizza from ' ~ (log.service_date|pretty_date) }}" loading="lazy"></a>{% if photo.caption %}<figcaption>{{ photo.caption }}</figcaption>{% endif %}<form method="post" action="{{ url_for('main.photo_delete', photo_id=photo.id) }}" onsubmit="return confirm('Delete this photo?')"><button class="photo-delete" type="submit" aria-label="Delete photo">×</button></form></figure>
+        <figure><a href="{{ url_for('main.photo_file', filename=photo.filename) }}" target="_blank" rel="noopener"><img src="{{ url_for('main.photo_file', filename=photo.filename) }}" alt="{{ photo.caption or 'Finished pizza from ' ~ (log.service_date|pretty_date) }}" loading="lazy"></a>{% if photo.caption %}<figcaption>{{ photo.caption }}</figcaption>{% endif %}<form method="post" action="{{ url_for('main.photo_delete', photo_id=photo.id) }}" onsubmit="return confirm('Delete this photo?')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="photo-delete" type="submit" aria-label="Delete photo">×</button></form></figure>
       {% endfor %}
     </div>
   {% endif %}
   <form class="photo-upload" method="post" enctype="multipart/form-data" action="{{ url_for('main.photo_upload', log_id=log.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label><span>Add pizza photos</span><input type="file" name="photos" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple required></label>
     <label>Caption for this group<input name="caption" placeholder="Optional"></label>
     <button class="button" type="submit">Upload Photos</button>
@@ -111,6 +112,6 @@
 </section>
 
 <section class="danger-zone no-print">
-  <details><summary>Delete this dough log</summary><p>This permanently removes the log and its photos.</p><form method="post" action="{{ url_for('main.log_delete', log_id=log.id) }}" onsubmit="return confirm('Delete this dough log and all of its photos?')"><button class="button danger" type="submit">Delete Dough Log</button></form></details>
+  <details><summary>Delete this dough log</summary><p>This permanently removes the log and its photos.</p><form method="post" action="{{ url_for('main.log_delete', log_id=log.id) }}" onsubmit="return confirm('Delete this dough log and all of its photos?')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="button danger" type="submit">Delete Dough Log</button></form></details>
 </section>
 {% endblock %}
